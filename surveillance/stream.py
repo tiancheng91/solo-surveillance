@@ -73,13 +73,10 @@ class RTSPReader:
             return frame
 
     def skip_frames(self, duration_sec: float) -> None:
-        """Grab-and-discard frames for *duration_sec* without pixel copy (saves CPU)."""
+        """Pause frame consumption for *duration_sec*.
+
+        Lets the RTSP buffer absorb frames naturally — no FFMPEG decode cost during the pause.
+        """
         if duration_sec <= 0:
             return
-        deadline = time.monotonic() + duration_sec
-        while time.monotonic() < deadline:
-            if self._cap is None or not self._cap.isOpened():
-                return  # reconnect handled by next read_frame()
-            ok = self._cap.grab()
-            if not ok:
-                return
+        time.sleep(duration_sec)
