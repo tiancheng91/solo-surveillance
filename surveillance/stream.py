@@ -71,3 +71,15 @@ class RTSPReader:
                 time.sleep(self._cfg.reconnect_delay_sec)
                 continue
             return frame
+
+    def skip_frames(self, duration_sec: float) -> None:
+        """Grab-and-discard frames for *duration_sec* without pixel copy (saves CPU)."""
+        if duration_sec <= 0:
+            return
+        deadline = time.monotonic() + duration_sec
+        while time.monotonic() < deadline:
+            if self._cap is None or not self._cap.isOpened():
+                return  # reconnect handled by next read_frame()
+            ok = self._cap.grab()
+            if not ok:
+                return

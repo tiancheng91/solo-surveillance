@@ -18,7 +18,6 @@ class VisionBurstConfig:
     enabled: bool = False
     window_sec: float = 1.2
     interval_sec: float = 0.3
-    min_interval_sec: float = 0.05
 
     @classmethod
     def from_dict(cls, d: dict | None) -> VisionBurstConfig:
@@ -26,7 +25,7 @@ class VisionBurstConfig:
             return cls(enabled=False)
         win = float(d.get("window_sec", 1.2))
         iv = float(d.get("interval_sec", 0.3))
-        min_iv = float(d.get("min_interval_sec", 0.05))
+        min_iv = 0.2
         if win <= 0:
             win = 1.2
         iv = max(min_iv, iv)
@@ -34,7 +33,6 @@ class VisionBurstConfig:
             enabled=bool(d.get("enabled", False)),
             window_sec=win,
             interval_sec=iv,
-            min_interval_sec=min_iv,
         )
 
 

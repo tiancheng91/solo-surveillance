@@ -8,12 +8,12 @@ defaults:
     diff_threshold: 28
     min_change_ratio: 0.012
     ai_cooldown_sec: 10.0
+    # check_interval_sec: 0.2     # 运动检测采样间隔(秒)；0=每帧检测，>0 通过 grab() 跳过中间帧降低 CPU
   # motion 触发后短窗口内多帧推理，标签取各帧最大置信度（设 enabled: true 启用）
   vision_burst:
     enabled: false
     window_sec: 1.2
-    interval_sec: 0.3
-    min_interval_sec: 0.05
+    interval_sec: 0.6
   # 场景化录制：按事件类型独立配置截图/视频片段；文件存 data/{cameraId}/{date}/ 下
   recordings:
     base_dir: "data"

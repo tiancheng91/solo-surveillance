@@ -81,7 +81,9 @@ def camera_worker(
             return
 
     stream = RTSPReader(StreamConfig(rtsp_url=stream_url))
-    motion = MotionGate(_motion_cfg(eff))
+    motion_cfg = _motion_cfg(eff)
+    motion = MotionGate(motion_cfg)
+    check_iv = motion_cfg.check_interval_sec
     pipeline = AIPipeline.from_camera_detectors(eff.get("detectors"))
     rec_mgr = _recordings_mgr(eff, cam_id)
     hooks_mgr = HooksManager(eff.get("hooks"))
@@ -91,6 +93,7 @@ def camera_worker(
     log.info("线程启动: %s", cam_id)
     try:
         while not stop.is_set():
+            stream.skip_frames(check_iv)
             frame = stream.read_frame()
             if frame is None:
                 continue
