@@ -21,6 +21,7 @@ from surveillance.vision_burst import (
     pick_best_snapshot_frame,
     sample_vision_burst,
 )
+from surveillance.onvif import OnvifUrlResolver, parse_onvif_url
 
 log = logging.getLogger(__name__)
 
@@ -61,12 +62,25 @@ def camera_worker(
 ) -> None:
     eff = camera_effective_config(full_cfg, camera_row)
     cam_id = str(eff.get("id") or "camera")
-    rtsp = str(eff.get("rtsp_url") or "").strip()
-    if not rtsp:
-        log.error("相机 %s 未配置 rtsp_url，跳过", cam_id)
+
+    # stream_url 支持 rtsp:// 和 onvif:// 两种协议
+    stream_url = str(eff.get("stream_url") or eff.get("rtsp_url") or "").strip()
+    if not stream_url:
+        log.error("相机 %s 未配置 stream_url，跳过", cam_id)
         return
 
-    stream = RTSPReader(StreamConfig(rtsp_url=rtsp))
+    if stream_url.startswith("onvif://"):
+        log.info("[%s] ONVIF 解析中: %s", cam_id, stream_url)
+        try:
+            onvif_cfg = parse_onvif_url(stream_url)
+            resolver = OnvifUrlResolver(onvif_cfg)
+            stream_url = resolver.resolve()
+            resolver.close()
+        except Exception:
+            log.exception("[%s] ONVIF 解析失败，跳过", cam_id)
+            return
+
+    stream = RTSPReader(StreamConfig(rtsp_url=stream_url))
     motion = MotionGate(_motion_cfg(eff))
     pipeline = AIPipeline.from_camera_detectors(eff.get("detectors"))
     rec_mgr = _recordings_mgr(eff, cam_id)

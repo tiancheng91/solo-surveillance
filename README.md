@@ -1,6 +1,6 @@
 # solo-surveillance
 
-自托管、轻量、纯本地运行的 AI 监控 NVR 系统，支持 Web UI 回放与 Home Assistant 集成。
+自托管、轻量、纯本地运行的 AI 监控 NVR 系统，支持 RTSP 直连与 ONVIF 自动发现，内置 Web UI 回放与 Home Assistant 集成。
 
 ### 设计理念
 
@@ -16,7 +16,7 @@
 
 - Python >= 3.11
 - [uv](https://docs.astral.sh/uv/)（推荐）或 pip
-- 一个或多个 RTSP 摄像头
+- 一个或多个 RTSP / ONVIF 摄像头
 
 > **没有 RTSP 摄像头？** 推荐搭配 [go2rtc](https://github.com/AlexxIT/go2rtc) 使用——它可以将市面上绝大多数摄像头协议（ONVIF、RTMP、HTTP-FLV、海康/大华私有协议等）统一转换为 RTSP 流，甚至支持 USB 摄像头和手机摄像头接入。配合本项目的 `config.example.yaml` 中的示例地址即可开箱即用。
 
@@ -33,13 +33,20 @@ uv sync
 cp config.example.yaml config.yaml
 ```
 
-编辑 `config.yaml`，填入你的 RTSP 相机地址：
+编辑 `config.yaml`，填入你的相机地址：
 
 ```yaml
 cameras:
   - id: door           # 相机名称，自定义
     enabled: true
-    rtsp_url: "rtsp://user:password@192.168.1.100:554/stream1"
+    stream_url: "rtsp://user:password@192.168.1.100:554/stream1"
+```
+
+也支持 ONVIF 自动发现：
+
+```yaml
+  - id: front_door
+    stream_url: "onvif://admin:password@192.168.1.100:80?profile=0"
 ```
 
 > 添加多路相机只需在 `cameras` 列表下继续追加条目。全局默认值在 `defaults` 中，单路可选择性覆盖。
@@ -79,6 +86,7 @@ uv run solo-surveillance --http :8080
 ## 特性
 
 - **多路相机** — 单进程多线程，每路独立配置
+- **双协议支持** — `rtsp://` 直连或 `onvif://` 自动发现 RTSP 地址
 - **运动门控** — 帧差检测（resize → 灰度 → 高斯模糊 → absdiff），AI 前过滤无效帧
 - **AI 检测** — YOLOv8 人体检测（可扩展更多检测器）
 - **Vision Burst** — 短窗口多帧采样，置信度合并，截图选最佳帧
@@ -181,7 +189,7 @@ defaults:
 cameras:
   - id: xiaomi1               # 相机唯一标识，用于日志、目录命名
     enabled: true             # false=禁用此路，不会创建线程
-    rtsp_url: "rtsp://..."    # RTSP 流地址
+    stream_url: "rtsp://..."  # 视频流地址：rtsp:// 直连或 onvif:// 自动发现
 
     # 以下字段可选，不写则回退到 defaults 中的对应值：
     # motion:
@@ -196,18 +204,22 @@ cameras:
 
   # - id: cam2               # 多路示例（取消注释启用）
   #   enabled: false
-  #   rtsp_url: "rtsp://..."
+  #   stream_url: "rtsp://..."
   #   detectors:
   #     person:
   #       enabled: false
 ```
+
+> **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`
+> - `profile`：media profile 索引，默认 0
+> - 支持 `${ENV_VAR}` 环境变量，避免明文密码：`onvif://admin:${CAM_PASSWORD}@192.168.1.100`
 
 > **提示**：`config.yaml` 建议加入 `.gitignore`，避免泄露摄像头地址和凭据。
 
 ## 数据流
 
 ```
-RTSP stream ──> MotionGate (帧差门控)
+RTSP / ONVIF 流 ──> MotionGate (帧差门控)
                      │
               min_change_ratio ≥ threshold?
                      │否└─ 跳过
@@ -298,6 +310,7 @@ class FireDetector(VisionDetector):
 | `main.py` | 入口：argparse、线程管理、信号处理 |
 | `config_loader.py` | YAML 加载、deep_merge、环境变量展开 |
 | `stream.py` | RTSPReader — cv2.VideoCapture 封装，自动重连 |
+| `onvif.py` | OnvifUrlResolver — ONVIF 设备连接、RTSP 地址发现 |
 | `motion.py` | MotionGate — 帧差运动门控 |
 | `detectors/base.py` | VisionDetector / AudioDetector 抽象基类与结果数据结构 |
 | `detectors/person_yolo.py` | YOLOv8 人体检测 |
@@ -323,6 +336,7 @@ class FireDetector(VisionDetector):
 - numpy（>= 1.24.0）
 - PyYAML（>= 6.0）
 - ultralytics（>= 8.0.0）
+- onvif-zeep（>= 0.2.0，仅 ONVIF 解析需要；纯 RTSP 用户可忽略）
 
 ## License
 

@@ -35,7 +35,8 @@ defaults:
 cameras:
   - id: xiaomi1
     enabled: true
-    rtsp_url: "rtsp://micam.appsvc.net:8554/xiaomi1"
+    # RTSP 直连
+    stream_url: "rtsp://micam.appsvc.net:8554/xiaomi1"
     # 本路可选覆盖 defaults
     # motion:
     #   min_change_ratio: 0.02
@@ -48,9 +49,14 @@ cameras:
     #   person:
     #     clip_seconds: 15
 
-  # - id: cam2
+  # - id: front_door
   #   enabled: false
-  #   rtsp_url: "rtsp://..."
+  #   # ONVIF 自动发现（支持 ${ENV_VAR}）
+  #   stream_url: "onvif://admin:${CAM_PASSWORD}@192.168.1.100:80?profile=0"
   #   detectors:
   #     person:
-  #       enabled: false
+  #       enabled: true
+
+  # - id: cam2
+  #   enabled: false
+  #   stream_url: "rtsp://..."
