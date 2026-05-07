@@ -76,7 +76,15 @@ class RTSPReader:
         """Pause frame consumption for *duration_sec*.
 
         Lets the RTSP buffer absorb frames naturally — no FFMPEG decode cost during the pause.
+        After waking up, discards a few undecoded frames to avoid HEVC decoder warnings
+        when the first buffered packet references an already-evicted keyframe.
         """
         if duration_sec <= 0:
             return
         time.sleep(duration_sec)
+        # Drain the internal buffer so the next read_frame() starts on a fresh
+        # keyframe, avoiding "Could not find ref with POC" HEVC warnings.
+        if self._cap is not None and self._cap.isOpened():
+            for _ in range(10):
+                if not self._cap.grab():
+                    break
