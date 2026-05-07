@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang=en>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NVR</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@keyframes shimmer { 0%{opacity:.4} 50%{opacity:.8} 100%{opacity:.4} }
+.skeleton { animation:shimmer 1.4s ease-in-out infinite; background:#e5e7eb; border-radius:4px }
+.pl { background:#f3f4f6; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; flex-shrink:0 }
+.pl img { width:100%; height:100%; object-fit:cover; display:block }
+.lightbox { position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.85); display:flex; align-items:center; justify-content:center; padding:24px; opacity:0; transition:opacity .2s; pointer-events:none }
+.lightbox.open { opacity:1; pointer-events:auto }
+.lightbox-close { position:absolute; top:16px; right:16px; width:36px; height:36px; border-radius:999px; background:rgba(255,255,255,.15); color:#fff; border:0; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; z-index:1 }
+.lightbox-close:hover { background:rgba(255,255,255,.25) }
+.player-frame { position:relative; width:90vw; max-width:960px; aspect-ratio:16/9; border-radius:10px; overflow:hidden; box-shadow:0 8px 40px rgba(0,0,0,.6); background:#000 }
+.player-frame img { width:100%; height:100%; object-fit:contain; display:block }
+.player-frame video { width:100%; height:100%; display:block }
+.play-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; cursor:pointer; background:rgba(0,0,0,.15); transition:background .2s }
+.play-overlay:hover { background:rgba(0,0,0,.25) }
+.play-overlay svg { width:64px; height:64px; opacity:.9; filter:drop-shadow(0 4px 12px rgba(0,0,0,.6)); transition:transform .15s }
+.play-overlay:hover svg { transform:scale(1.08) }
+</style>
+
+<div class="max-w-3xl mx-auto p-4 sm:p-6 font-sans">
+  <div class="flex items-center justify-between mb-5">
+    <h1 class="text-xl font-semibold text-gray-900 tracking-tight">NVR</h1>
+    <span id="camCount" class="text-xs text-gray-400"></span>
+  </div>
+
+  <div class="flex flex-wrap gap-2 mb-5">
+    <select id="camera" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400"></select>
+    <input type="date" id="date" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
+    <input type="time" id="tFrom" value="00:00" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
+    <span class="text-gray-300 text-sm self-center">—</span>
+    <input type="time" id="tTo" value="23:59" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
+    <button id="queryBtn" class="h-9 rounded-md bg-gray-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-gray-800 active:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400">Query</button>
+  </div>
+
+  <div id="results" class="space-y-2"></div>
+</div>
+
+<!-- lightbox -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <div id="lbContent"></div>
+</div>
+
+<script>
+const $=(s)=>document.querySelector(s);
+const camSel=$("#camera"), dateInput=$("#date"), tFrom=$("#tFrom"), tTo=$("#tTo"), results=$("#results"), queryBtn=$("#queryBtn");
+const lb=$("#lightbox"), lbContent=$("#lbContent");
+
+// lightbox
+function openLightbox(snapUrl, clipUrl){
+  const hasClip=!!clipUrl;
+  lbContent.innerHTML='<div class="player-frame" id="playerFrame">'
+    +'<img src="'+snapUrl+'" alt="">'
+    +(hasClip?'<div class="play-overlay" id="playOverlay"><svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>':'')
+    +'</div>';
+  lb.classList.add("open");
+  document.body.style.overflow="hidden";
+  if(hasClip){
+    document.getElementById("playOverlay").onclick=function(){
+      document.getElementById("playerFrame").innerHTML='<video controls autoplay><source src="'+clipUrl+'" type="video/mp4"></video>';
+    };
+  }
+}
+function closeLightbox(e){
+  if(e && e.target!==lb) return;
+  lb.classList.remove("open");
+  lbContent.innerHTML="";
+  document.body.style.overflow="";
+}
+
+// IntersectionObserver: only load images when visible
+const obs=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(!entry.isIntersecting) return;
+    const el=entry.target;
+    const url=el.dataset.src;
+    if(!url) return;
+    const img=document.createElement("img");
+    img.src=url;
+    img.alt="";
+    img.loading="lazy";
+    el.innerHTML="";
+    el.classList.remove("pl");
+    el.appendChild(img);
+    obs.unobserve(el);
+  });
+},{rootMargin:"400px"});
+
+function typeClass(t){
+  if(t==="person") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  if(t==="motion") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  return "bg-gray-50 text-gray-600 ring-1 ring-gray-200";
+}
+function fmtTime(iso){
+  const d=new Date(iso);
+  return d.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+
+dateInput.value=new Date().toISOString().slice(0,10);
+
+fetch("/api/cameras").then(r=>r.json()).then(cams=>{
+  cams.forEach(c=>{const o=document.createElement("option");o.value=c;o.text=c;camSel.appendChild(o)});
+  if(cams.length){$("#camCount").textContent=cams.length+" camera"+(cams.length>1?"s":"");loadTimeline()}
+});
+
+function loadTimeline(){
+  const cam=camSel.value,date=dateInput.value,from=tFrom.value||"00:00",to=tTo.value||"23:59";
+  results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">Loading...</div>';
+  obs.disconnect();
+  const start=date+"T"+from+":00", end=date+"T"+to+":00";
+  fetch("/api/timeline/range?camera="+encodeURIComponent(cam)+"&start="+encodeURIComponent(start)+"&end="+encodeURIComponent(end))
+    .then(r=>r.json()).then(render).catch(()=>{results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">Error</div>'});
+}
+
+function render(events){
+  if(!events.length){results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">No events</div>';return}
+  results.innerHTML=events.map(e=>{
+    const tc=typeClass(e.event_type);
+    const t=fmtTime(e.start_time);
+    const hasClip=!!e.clip_url;
+    const thumb=e.snapshot_url
+      ? '<div class="pl w-36 h-[80px] mt-1.5" data-src="'+e.snapshot_url+'" data-snap="'+e.snapshot_url+'" data-clip="'+(e.clip_url||'')+'">'
+        +'<svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/></svg>'
+        +(hasClip?'<div class="play-badge"><svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>':'')
+        +'</div>'
+      : "";
+    return '<div class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">'
+      +'<div class="flex items-start gap-3">'
+      +'<div class="text-xs text-gray-400 tabular-nums whitespace-nowrap mt-0.5 min-w-[64px]">'+t+'</div>'
+      +'<div class="flex-1 min-w-0">'
+      +'<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium '+tc+'">'+e.event_type+'</span>'
+      +thumb
+      +'</div></div></div>';
+  }).join("");
+  document.querySelectorAll(".pl[data-src]").forEach(el=>{obs.observe(el)});
+}
+
+// delegated click on thumbnail to open lightbox
+results.addEventListener("click",function(e){
+  const el=e.target.closest("[data-snap]");
+  if(!el) return;
+  openLightbox(el.dataset.snap,el.dataset.clip||null);
+});
+
+queryBtn.onclick=loadTimeline;
+camSel.onchange=loadTimeline;
+dateInput.onchange=loadTimeline;
+</script>

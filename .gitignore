@@ -1,0 +1,28 @@
+# 运行时生成的数据（截图、录像、timeline.csv）
+data/
+
+# 配置文件（含 RTSP 地址、密码等敏感信息）
+config.yaml
+
+# YOLO 模型文件（自动下载）
+*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

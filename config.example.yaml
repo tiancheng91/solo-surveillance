@@ -1,0 +1,56 @@
+# 复制为 config.yaml 后按需修改（config.yaml 建议加入 .gitignore）
+
+# 可选：多路相机共用的默认值，单路里未写的项会回退到这里
+defaults:
+  motion:
+    resize_width: 320
+    blur_ksize: 7
+    diff_threshold: 28
+    min_change_ratio: 0.012
+    ai_cooldown_sec: 10.0
+  # motion 触发后短窗口内多帧推理，标签取各帧最大置信度（设 enabled: true 启用）
+  vision_burst:
+    enabled: false
+    window_sec: 1.2
+    interval_sec: 0.3
+    min_interval_sec: 0.05
+  # 场景化录制：按事件类型独立配置截图/视频片段；文件存 data/{cameraId}/{date}/ 下
+  recordings:
+    base_dir: "data"
+    motion:                    # 运动触发（AI 检测前）
+      snapshot: false
+      clip: false
+      clip_seconds: 5
+    person:                    # AI 检测到人
+      snapshot: true
+      clip: false
+      clip_seconds: 10
+  detectors:
+    person:
+      enabled: true
+      model: "yolov8n.pt"
+      conf: 0.35
+      classes: [0]
+
+cameras:
+  - id: xiaomi1
+    enabled: true
+    rtsp_url: "rtsp://micam.appsvc.net:8554/xiaomi1"
+    # 本路可选覆盖 defaults
+    # motion:
+    #   min_change_ratio: 0.02
+    detectors:
+      person:
+        enabled: true
+        model: "yolov8n.pt"
+        conf: 0.4
+    # recordings:
+    #   person:
+    #     clip_seconds: 15
+
+  # - id: cam2
+  #   enabled: false
+  #   rtsp_url: "rtsp://..."
+  #   detectors:
+  #     person:
+  #       enabled: false
