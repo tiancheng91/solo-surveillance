@@ -31,6 +31,22 @@ defaults:
       model: "yolov8n.pt"
       conf: 0.35
       classes: [0]
+    # ── LLM 视觉场景识别（可选）──
+    # 调用 LLM API 分析画面内容，检测复杂场景（喂奶、哭闹、换尿布等）
+    # llm_vision:
+    #   enabled: true
+    #   provider: "anthropic"               # "anthropic" 或 "openai"
+    #   model: "claude-sonnet-4-20250514"
+    #   api_key: "${ANTHROPIC_API_KEY}"      # 建议用环境变量
+    #   base_url: ""                          # 自定义接入点（可选，如 API 代理地址）
+    #   conf: 0.6                            # 场景置信度阈值
+    #   cooldown_sec: 60                     # API 调用冷却（秒）
+    #   frames: 2                            # 传入帧数（>1 可提升准确率，帧间隔 >0.5s）
+    #   system_prompt: "你是一个婴儿房监控助手。请分析画面中的场景。"
+    #   scenes:
+    #     feeding: "婴儿正在吃奶（奶瓶或母乳喂养）"
+    #     crying: "婴儿哭闹、表情痛苦"
+    #     changing: "正在换尿布"
   # 可选：检测区域（归一化坐标 x1,y1,x2,y2，不写=全帧）
   # 画面裁剪后做 motion 和 AI 检测，截图/视频仍保存原始全尺寸
   # region: [0, 0, 1, 1]

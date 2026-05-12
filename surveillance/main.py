@@ -155,7 +155,22 @@ def camera_worker(
                 }
             else:
                 log.debug("[%s] detector: 单帧推理", cam_id)
-                result = pipeline.run(frame, camera_id=cam_id, rtsp_url=None)
+                # 多帧 LLM：运动触发后继续采集数帧，间隔 >0.5 秒
+                llm_extra = None
+                llm_cfg = eff.get("detectors", {}).get("llm_vision", {})
+                if isinstance(llm_cfg, dict) and llm_cfg.get("enabled") and int(llm_cfg.get("frames", 1)) > 1:
+                    n = int(llm_cfg["frames"])
+                    llm_extra = []
+                    for _ in range(n - 1):
+                        fr = stream.read_frame()
+                        if fr is None:
+                            time.sleep(0.05)
+                            continue
+                        llm_extra.append(fr)
+                        if _ < n - 2:
+                            time.sleep(max(0.5, motion_cfg.check_interval_sec))
+                extra = {"llm_extra_frames": llm_extra} if llm_extra else None
+                result = pipeline.run(frame, camera_id=cam_id, rtsp_url=None, extra=extra)
                 snapshot_bgr = raw_frame.copy()
                 burst_meta = {"enabled": False, "frames": 1}
 

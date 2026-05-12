@@ -88,6 +88,16 @@ class AIPipeline:
             )
             thresholds["person"] = float(p.get("conf", 0.35))
 
+        # LLM Vision detector
+        raw_llm = dc.get("llm_vision")
+        if isinstance(raw_llm, dict) and raw_llm.get("enabled", False):
+            from surveillance.detectors.llm_vision import LLMVisionDetector
+
+            llm = LLMVisionDetector(raw_llm)
+            vision.append(llm)
+            for scene in (raw_llm.get("scenes") or {}):
+                thresholds[scene] = float(raw_llm.get("conf", 0.6))
+
         return AIPipeline(vision, audio, label_thresholds=thresholds)
 
     def run(
@@ -95,8 +105,9 @@ class AIPipeline:
         frame_bgr: np.ndarray,
         camera_id: str,
         rtsp_url: str | None = None,
+        extra: dict | None = None,
     ) -> PipelineResult:
-        vctx = VisionContext(camera_id=camera_id)
+        vctx = VisionContext(camera_id=camera_id, extra=extra or {})
         vision_out: dict[str, VisionResult] = {}
         for d in self._vision:
             try:

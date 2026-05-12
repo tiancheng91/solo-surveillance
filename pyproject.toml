@@ -25,6 +25,7 @@ dependencies = [
     "PyYAML>=6.0",
     "ultralytics>=8.0.0",
     "onvif-zeep>=0.2.0",
+    "openai>=2.36.0",
 ]
 
 [project.urls]
@@ -43,4 +44,13 @@ packages = ["surveillance"]
 solo-surveillance = "surveillance.main:main"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: 需要真实 API 调用的集成测试（默认跳过）",
+]
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.49.0"]
