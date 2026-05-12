@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-05-12)
+
+### Features
+
+- LLM vision scene detection: analyze motion-triggered frames via Anthropic/OpenAI API to detect complex scenes (feeding, crying, diaper change, etc.)
+- Custom scene definitions: user-defined scene keys and descriptions in config, LLM returns confidence scores for each
+- Independent LLM cooldown: configurable API call interval (default 60s), separate from YOLO cooldown
+- Provider support: Anthropic Claude (`claude-sonnet-4-20250514`) and OpenAI GPT-4o
+- Scene labels flow through existing recording/hook/HA pipeline automatically
+
+### Project
+
+- New optional dependency: `uv sync --group llm` or `uv add anthropic` for LLM support
+
 ## 0.1.1 (2026-05-12)
 
 ### Features
