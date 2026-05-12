@@ -21,18 +21,6 @@
 
 ## 快速开始
 
-### 一键安装 & 启动（推荐）
-
-```bash
-# 使用 uvx（推荐——自动隔离环境，无需先安装）
-uvx solo-surveillance --http 0.0.0.0:8080
-
-# 或使用 pip 全局安装
-pip install solo-surveillance && solo-surveillance --http 0.0.0.0:8080
-```
-
-> 首次启动会自动下载 YOLOv8 模型。默认读取当前目录的 `config.yaml`，可按下文步骤配置相机后重新启动。
-
 ### 前置要求
 
 - Python >= 3.11
@@ -41,17 +29,22 @@ pip install solo-surveillance && solo-surveillance --http 0.0.0.0:8080
 
 > **没有 RTSP 摄像头？** 推荐搭配 [go2rtc](https://github.com/AlexxIT/go2rtc) 使用——它可以将市面上绝大多数摄像头协议（ONVIF、RTMP、HTTP-FLV、海康/大华私有协议等）统一转换为 RTSP 流，甚至支持 USB 摄像头和手机摄像头接入。配合本项目的 `config.example.yaml` 中的示例地址即可开箱即用。
 
-### 1. 克隆 & 安装
+### 1. 安装
 
 ```bash
-git clone https://github.com/tiancheng91/solo-surveillance.git && cd solo-surveillance
-uv sync
+# 方式 A：使用 uvx（推荐——自动隔离环境，无需手动安装）
+uvx solo-surveillance
+
+# 方式 B：使用 pip 全局安装
+pip install solo-surveillance
 ```
 
 ### 2. 配置相机
 
 ```bash
-cp config.example.yaml config.yaml
+# 下载示例配置
+curl -O https://raw.githubusercontent.com/tiancheng91/solo-surveillance/main/config.example.yaml
+mv config.example.yaml config.yaml
 ```
 
 编辑 `config.yaml`，填入你的相机地址：
@@ -75,7 +68,7 @@ cameras:
 ### 3. 启动
 
 ```bash
-uv run solo-surveillance
+solo-surveillance
 ```
 
 首次启动会自动下载 YOLOv8 模型。看到如下日志即正常运行：
@@ -85,10 +78,12 @@ INFO  [cam-door] 线程启动: door
 INFO  [cam-door] 已连接 RTSP
 ```
 
+> 从 PyPI 安装后直接使用 `solo-surveillance` 命令；如使用 `uvx` 则每次执行 `uvx solo-surveillance`。
+
 ### 4. （可选）打开 Web UI
 
 ```bash
-uv run solo-surveillance --http :8080
+solo-surveillance --http 0.0.0.0:8080
 ```
 
 浏览器访问 `http://<设备IP>:8080`，按相机/日期查看截图与录像回放。
