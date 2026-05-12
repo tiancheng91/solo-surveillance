@@ -7,51 +7,47 @@
   <img alt="Last Commit" src="https://img.shields.io/github/last-commit/tiancheng91/solo-surveillance?style=flat-square">
 </p>
 
-自托管、轻量、纯本地运行的 AI 监控 NVR 系统，支持 RTSP 直连与 ONVIF 自动发现，内置 Web UI 回放与 Home Assistant 集成。
+自托管、轻量、纯本地运行的 AI 监控 NVR 系统。支持 RTSP 直连与 ONVIF 自动发现，YOLOv8 人体检测，内置 Web 回放界面与 Home Assistant 集成。
 
 ![Web UI 截图](docs/webui.png)
 
-### 设计理念
+## 特性
 
-**Solo** 代表这套系统的三个核心追求：
-
-- **独立自主（Independence）** — 不依赖任何第三方云服务，所有视频流、录像和分析均在本地完成。A self-hosted, cloud-independent NVR solution.
-- **单机高效（Single-node）** — 专为单机部署优化（Mac mini M4、NAS、Docker 容器），无需复杂集群即可稳定运行。Designed for single-node efficiency.
-- **专注纯粹（Focus）** — 只做好"监控与录制"这一件事，拒绝功能臃肿。A focused approach to home security.
+- **多路相机** — 单进程多线程，每路独立配置，独立运行
+- **双协议接入** — `rtsp://` 直连或 `onvif://` 自动发现 RTSP 地址
+- **运动门控** — 帧差检测预过滤，无效帧不送 AI，大幅降低算力消耗
+- **AI 检测** — 内置 YOLOv8 人体检测，支持自定义检测器扩展
+- **场景化录制** — 按事件类型（motion / person）独立配置是否保存截图或视频片段
+- **Web UI** — 内置 HTTP 服务器，按相机/日期/时间段检索事件回放，带时间轴导航
+- **Home Assistant 集成** — 检测到事件时通过 REST API 推送通知
+- **Hook 脚本** — 事件触发时调用外部脚本，灵活联动其他系统
+- **自动重连** — RTSP 断流自动恢复，适合 7x24 运行
+- **纯本地运行** — 所有视频流、录像、AI 推理均在本地完成，无云依赖
 
 ## 快速开始
-
-### 前置要求
-
-- Python >= 3.11
-- [uv](https://docs.astral.sh/uv/)（推荐）或 pip
-- 一个或多个 RTSP / ONVIF 摄像头
-
-> **没有 RTSP 摄像头？** 推荐搭配 [go2rtc](https://github.com/AlexxIT/go2rtc) 使用——它可以将市面上绝大多数摄像头协议（ONVIF、RTMP、HTTP-FLV、海康/大华私有协议等）统一转换为 RTSP 流，甚至支持 USB 摄像头和手机摄像头接入。配合本项目的 `config.example.yaml` 中的示例地址即可开箱即用。
 
 ### 1. 安装
 
 ```bash
-# 方式 A：使用 uvx（推荐——自动隔离环境，无需手动安装）
+# 方式 A（推荐）——自动隔离环境，无需手动安装
 uvx solo-surveillance
 
-# 方式 B：使用 pip 全局安装
+# 方式 B——全局安装
 pip install solo-surveillance
 ```
 
 ### 2. 配置相机
 
 ```bash
-# 下载示例配置
 curl -O https://raw.githubusercontent.com/tiancheng91/solo-surveillance/main/config.example.yaml
 mv config.example.yaml config.yaml
 ```
 
-编辑 `config.yaml`，填入你的相机地址：
+编辑 `config.yaml`，填入相机地址：
 
 ```yaml
 cameras:
-  - id: door           # 相机名称，自定义
+  - id: door
     enabled: true
     stream_url: "rtsp://user:password@192.168.1.100:554/stream1"
 ```
@@ -63,7 +59,7 @@ cameras:
     stream_url: "onvif://admin:password@192.168.1.100:80?profile=0"
 ```
 
-> 添加多路相机只需在 `cameras` 列表下继续追加条目。全局默认值在 `defaults` 中，单路可选择性覆盖。
+> 添加多路相机只需在 `cameras` 下继续追加条目。全局默认值在 `defaults` 中，每路相机可选择性覆盖。
 
 ### 3. 启动
 
@@ -78,83 +74,44 @@ INFO  [cam-door] 线程启动: door
 INFO  [cam-door] 已连接 RTSP
 ```
 
-> 从 PyPI 安装后直接使用 `solo-surveillance` 命令；如使用 `uvx` 则每次执行 `uvx solo-surveillance`。
-
-### 4. （可选）打开 Web UI
+### 4. 打开 Web UI（可选）
 
 ```bash
 solo-surveillance --http 0.0.0.0:8080
 ```
 
-浏览器访问 `http://<设备IP>:8080`，按相机/日期查看截图与录像回放。
+浏览器访问 `http://<设备IP>:8080`：
+
+- 按相机、日期、时间段筛选事件
+- 缩略图懒加载，点击放大查看截图
+- 支持播放 MP4 视频片段
+- 右侧时间轴：黄色时段表示有事件，拖拽可快速导航
+- 排序切换：默认倒序（最新在前），点击翻转
 
 > Web UI 仅用于本地网络回放，不会将视频上传到云端。
 
-### 效果预览
-
-```
-默认配置下：
-  画面变化 → 运动触发（MotionGate 过滤无效帧）
-  → AI 检测 → 检测到人 → 保存截图 + 通知
-  检测不到人 → 跳过，不浪费算力
-```
-
-## 特性
-
-- **多路相机** — 单进程多线程，每路独立配置
-- **双协议支持** — `rtsp://` 直连或 `onvif://` 自动发现 RTSP 地址
-- **运动门控** — 帧差检测（resize → 灰度 → 高斯模糊 → absdiff），AI 前过滤无效帧
-- **AI 检测** — YOLOv8 人体检测（可扩展更多检测器）
-- **Vision Burst** — 短窗口多帧采样，置信度合并，截图选最佳帧
-- **场景化录制** — 按事件类型（motion / person）独立配置截图与视频片段
-- **Web UI** — 内置 HTTP 服务器，按相机/日期/时间段查询回放
-- **Home Assistant** — REST API 事件推送（可选，需在配置中设置）
-- **Hook 脚本** — 事件触发时调用外部脚本，灵活扩展
-- **自动重连** — RTSP 断流自动重连，守护运行
-
-## 命令行
+## 命令行参考
 
 ```bash
-# 启动（默认读取当前目录 config.yaml）
-uv run solo-surveillance
-
-# 调试模式（查看 motion 触发、AI 冷却、检测结果等详细日志）
-uv run solo-surveillance -v
-
-# 自定义配置路径
-uv run solo-surveillance -c /path/to/config.yaml
-
-# 启动内置 Web UI（监听所有网卡，端口 8080）
-uv run solo-surveillance --http :8080
-
-# 指定地址和端口
-uv run solo-surveillance --http 0.0.0.0:9090
+solo-surveillance            # 启动（默认读取当前目录 config.yaml）
+solo-surveillance -v         # 调试模式——查看 motion 触发、AI 冷却等详细日志
+solo-surveillance -c /path/to/config.yaml  # 指定配置路径
+solo-surveillance --http :8080     # 启动 Web UI（默认端口 8080）
+solo-surveillance --http 0.0.0.0:9090  # 指定监听地址和端口
 ```
 
-## Web UI
+---
 
-启动时加 `--http :8080`，浏览器打开 `http://<设备IP>:8080`：
-
-- 按相机、日期、时间段筛选事件
-- 查看截图缩略图（懒加载，滚动到可视区域自动加载）
-- 点击缩略图放大查看，支持播放视频片段（MP4）
-- 事件类型按颜色区分：`person` 粉色 / `motion` 琥珀色
+*以下章节面向进阶用户，详细介绍配置选项与系统设计。*
 
 ---
 
-以下章节面向进阶用户，详细介绍配置选项与系统设计。
-
----
-
-## 配置
+## 配置详解
 
 YAML 格式，`defaults` 块设置全局默认值，`cameras` 列表中每路相机可选择性覆盖。配置值支持 `${ENV_VAR}` 环境变量替换。
 
-### 配置详解
-
 ```yaml
 # ───────── 全局默认值 ─────────
-# 所有 cameras 中未显式配置的字段都会回退到这里
 defaults:
 
   # ─── 运动检测 ───
@@ -162,17 +119,17 @@ defaults:
     resize_width: 320        # 帧缩放到此宽度再比对，值越小越快但越不精确
     blur_ksize: 7            # 高斯模糊核大小（奇数），越大对噪点越不敏感
     diff_threshold: 28       # 像素差值阈值（0-255），越大越不容易触发
-    min_change_ratio: 0.012  # 变化像素占比阈值，超过此值判定为运动（1.2%）
-    ai_cooldown_sec: 10.0    # AI 检测冷却时间（秒），运动触发后在此时间内不再重复检测
-    check_interval_sec: 0.2  # 运动检测采样间隔（秒）；0=每帧检测，>0 通过 grab() 跳过中间帧降低 CPU，默认 0.2
+    min_change_ratio: 0.012  # 变化像素占比阈值（1.2%），超过此值判定为运动
+    ai_cooldown_sec: 10.0    # AI 检测冷却（秒），触发后在此时间内不再重复检测
+    check_interval_sec: 0.2  # 运动检测采样间隔（秒）；0=每帧检测，>0 跳过中间帧降低 CPU
 
   # ─── 多帧爆发采样 ───
-  # 开启后 motion 触发时在短时间内连续采集多帧分别推理，结果合并取最高置信度
+  # 开启后 motion 触发时短时间内连续采集多帧分别推理，结果合并取最高置信度
   vision_burst:
     enabled: false           # true=启用（提高检测准确率，增加算力消耗）
     window_sec: 1.2          # 采样窗口长度（秒）
     interval_sec: 0.3        # 相邻采样间隔（秒）
-    min_interval_sec: 0.05   # 最小采样间隔下限，防止配置过小导致 CPU 满载
+    min_interval_sec: 0.05   # 最小采样间隔下限，防止 CPU 满载
 
   # ─── 事件录制 ───
   recordiings:
@@ -182,54 +139,43 @@ defaults:
       clip: false             # 是否保存视频片段
       clip_seconds: 5         # 视频片段时长（秒）
     person:                   # AI 检测到人
-      snapshot: true          # 建议开启，保存检测到人时的截图
-      clip: false             # 视频片段
+      snapshot: true          # 建议开启
+      clip: false
       clip_seconds: 10
 
   # ─── AI 检测器 ───
   detectors:
     person:                            # 人体检测器
-      enabled: true                    # 是否启用
+      enabled: true
       model: "yolov8n.pt"             # YOLO 模型文件（首次自动下载，可选 yolov8s.pt 等）
-      conf: 0.35                       # 检测置信度阈值（0-1），越高误报越少但可能漏检
+      conf: 0.35                       # 检测置信度阈值（0-1）
       classes: [0]                     # COCO 类别 ID，[0] 代表人；空列表检测所有类别
 
   # ─── 外部 Hook 脚本（可选） ───
   hooks:
-    person:                            # 检测到人时触发
-      - command: /path/to/notify.sh    # 可执行脚本路径
-    # motion:                          # 运动触发时（AI 检测前）
+    person:
+      - command: /path/to/notify.sh
+    # motion:
     #   - command: /path/to/motion.sh
 
 
 # ───────── 相机列表 ─────────
 cameras:
-  - id: xiaomi1               # 相机唯一标识，用于日志、目录命名
-    enabled: true             # false=禁用此路，不会创建线程
-    stream_url: "rtsp://..."  # 视频流地址：rtsp:// 直连或 onvif:// 自动发现
+  - id: xiaomi1               # 相机唯一标识
+    enabled: true             # false=禁用此路
+    stream_url: "rtsp://..."  # rtsp:// 直连或 onvif:// 自动发现
 
-    # 以下字段可选，不写则回退到 defaults 中的对应值：
+    # 以下字段可选，不写则回退到 defaults
     # motion:
     #   min_change_ratio: 0.02
     # detectors:
     #   person:
-    #     enabled: true
     #     conf: 0.4
-    # recordings:
-    #   person:
-    #     clip_seconds: 15
-
-  # - id: cam2               # 多路示例（取消注释启用）
-  #   enabled: false
-  #   stream_url: "rtsp://..."
-  #   detectors:
-  #     person:
-  #       enabled: false
 ```
 
-> **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`
-> - `profile`：media profile 索引，默认 0
-> - 支持 `${ENV_VAR}` 环境变量，避免明文密码：`onvif://admin:${CAM_PASSWORD}@192.168.1.100`
+> **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`  
+> - `profile`：media profile 索引，默认 0  
+> - 支持 `${ENV_VAR}` 避免明文密码：`onvif://admin:${CAM_PASSWORD}@192.168.1.100`
 
 > **提示**：`config.yaml` 建议加入 `.gitignore`，避免泄露摄像头地址和凭据。
 
@@ -255,12 +201,10 @@ RTSP / ONVIF 流 ──> MotionGate (帧差门控)
 
 ## 录制与 Timeline
 
-数据存储在 `data/{camera_id}/{date}/` 目录：
-
 ```
 data/
-  xiaomi1/
-    2026-05-07/
+  {camera_id}/
+    {date}/
       snapshots/
         140530_person.jpg      # 事件截图
       clips/
@@ -279,7 +223,7 @@ start_time,end_time,event_type,snapshot_path,clip_path
 
 ## Hook 脚本
 
-配置中定义事件触发时调用的外部命令，用于发送通知、联动其他系统等：
+事件触发时调用外部命令，用于发送通知、联动其他系统：
 
 ```yaml
 defaults:
@@ -295,16 +239,16 @@ Hook 接收命令行参数：
 --event-type person
 --start-time 2026-05-07T14:05:30
 --end-time 2026-05-07T14:05:35
---snapshot-path snapshots/140530_person.jpg   # 截图相对路径（如有）
---clip-path clips/140530_person.mp4           # 视频相对路径（如有）
---labels '{"person": 0.85}'                   # JSON 格式标签与置信度
+--snapshot-path snapshots/140530_person.jpg
+--clip-path clips/140530_person.mp4
+--labels '{"person": 0.85}'
 ```
 
 ## 检测器扩展
 
 内置 `PersonYoloDetector`（YOLOv8 人体检测），可按以下步骤添加自定义检测器：
 
-1. 继承 `VisionDetector` 或 `AudioDetector`（`detectors/base.py`）
+1. 继承 `VisionDetector` 或 `AudioDetector`（`surveillance/detectors/base.py`）
 2. 设置唯一 `name` 类变量
 3. 实现 `analyze()` 返回 `VisionResult` / `AudioResult`
 4. 在 `AIPipeline.from_camera_detectors()` 中注册
@@ -327,18 +271,18 @@ class FireDetector(VisionDetector):
 | `main.py` | 入口：argparse、线程管理、信号处理 |
 | `config_loader.py` | YAML 加载、deep_merge、环境变量展开 |
 | `stream.py` | RTSPReader — cv2.VideoCapture 封装，自动重连 |
-| `onvif.py` | OnvifUrlResolver — ONVIF 设备连接、RTSP 地址发现 |
+| `onvif.py` | ONVIF 设备连接、RTSP 地址发现 |
 | `motion.py` | MotionGate — 帧差运动门控 |
-| `detectors/base.py` | VisionDetector / AudioDetector 抽象基类与结果数据结构 |
+| `detectors/base.py` | 检测器抽象基类与结果数据结构 |
 | `detectors/person_yolo.py` | YOLOv8 人体检测 |
-| `detectors/pipeline.py` | AIPipeline — 调度所有检测器，阈值门控 |
+| `detectors/pipeline.py` | AIPipeline — 调度检测器，阈值门控 |
 | `vision_burst.py` | 多帧爆发采样、合并与最佳帧选取 |
 | `recordings.py` | 截图/视频录制 + timeline.csv 管理 |
 | `hooks.py` | Hook 脚本管理器 |
 | `hass.py` | Home Assistant REST API 事件推送 |
 | `http_server.py` | 内置 HTTP 服务器 + Web UI |
 
-## 线程模型
+### 线程模型
 
 - 每路已启用相机创建独立 `threading.Thread`
 - `threading.Event` 协调关闭（SIGINT / SIGTERM）
@@ -353,7 +297,7 @@ class FireDetector(VisionDetector):
 - numpy（>= 1.24.0）
 - PyYAML（>= 6.0）
 - ultralytics（>= 8.0.0）
-- onvif-zeep（>= 0.2.0，仅 ONVIF 解析需要；纯 RTSP 用户可忽略）
+- onvif-zeep（>= 0.2.0，仅 ONVIF 需要；纯 RTSP 用户可忽略）
 
 ## License
 
