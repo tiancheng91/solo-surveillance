@@ -36,7 +36,7 @@ cameras:
   - id: xiaomi1
     enabled: true
     # RTSP 直连
-    stream_url: "rtsp://micam.appsvc.net:8554/xiaomi1"
+    stream_url: "rtsp://127.0.0.1:8554/xiaomi1"
     # 本路可选覆盖 defaults
     # motion:
     #   min_change_ratio: 0.02
