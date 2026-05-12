@@ -3,6 +3,22 @@ name = "solo-surveillance"
 version = "0.1.0"
 description = "自托管、轻量、纯本地运行的 AI 监控 NVR 系统"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+readme = "README.md"
+authors = [
+    { name = "tiancheng91" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Multimedia :: Video :: Capture",
+]
 dependencies = [
     "opencv-python-headless>=4.8.0",
     "numpy>=1.24.0",
@@ -10,6 +26,11 @@ dependencies = [
     "ultralytics>=8.0.0",
     "onvif-zeep>=0.2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/tiancheng91/solo-surveillance"
+Repository = "https://github.com/tiancheng91/solo-surveillance"
+"Bug Tracker" = "https://github.com/tiancheng91/solo-surveillance/issues"
 
 [build-system]
 requires = ["hatchling"]
