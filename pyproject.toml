@@ -44,3 +44,6 @@ solo-surveillance = "surveillance.main:main"
 
 [tool.uv]
 dev-dependencies = []
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.49.0"]
