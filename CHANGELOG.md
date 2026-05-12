@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 (2026-05-12)
+
+### Features
+
+- Per-camera region-of-interest: crop frame to normalized `[x1,y1,x2,y2]` before motion and AI detection; snapshots and clips still save at full resolution (#region config field)
+
+### Project
+
+- README: GitHub badges, Web UI screenshot, PyPI-first install flow (`uvx` / `pip`)
+- README: restructure with features-first layout
+
 ## 0.1.0 (2026-05-12)
 
 ### Features
