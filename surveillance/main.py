@@ -15,6 +15,7 @@ from surveillance.detectors.pipeline import AIPipeline, PipelineResult
 from surveillance.hooks import HooksManager
 from surveillance.recordings import RecordingManager
 from surveillance.http_server import start_http_server
+from surveillance.region import crop_to_region
 from surveillance.vision_burst import (
     VisionBurstConfig,
     merge_pipeline_results,
@@ -97,6 +98,10 @@ def camera_worker(
             frame = stream.read_frame()
             if frame is None:
                 continue
+            raw_frame = frame.copy()
+            region = eff.get("region")
+            if region:
+                frame = crop_to_region(frame, region)
             moving, ratio = motion.is_motion(frame)
             if not moving:
                 continue
@@ -104,7 +109,7 @@ def camera_worker(
             # 运动触发录制（独立于 AI，不受 AI/HA 冷却控制）
             m_cfg = rec_mgr.should_record("motion")
             if m_cfg is not None:
-                ev_data = rec_mgr.fire("motion", m_cfg, frame, stream, stop)
+                ev_data = rec_mgr.fire("motion", m_cfg, raw_frame, stream, stop)
                 if ev_data:
                     ev_data["camera_id"] = cam_id
                     hooks_mgr.fire("motion", ev_data)
@@ -135,7 +140,7 @@ def camera_worker(
                     burst_cfg.interval_sec,
                 )
                 samples = sample_vision_burst(
-                    stream, pipeline, cam_id, stop, burst_cfg, frame
+                    stream, pipeline, cam_id, stop, burst_cfg, frame, region
                 )
                 if not samples:
                     log.debug("[%s] detector: burst 无采样帧", cam_id)
@@ -151,7 +156,7 @@ def camera_worker(
             else:
                 log.debug("[%s] detector: 单帧推理", cam_id)
                 result = pipeline.run(frame, camera_id=cam_id, rtsp_url=None)
-                snapshot_bgr = frame.copy()
+                snapshot_bgr = raw_frame.copy()
                 burst_meta = {"enabled": False, "frames": 1}
 
             flat_labels = _flat_vision_labels(result)

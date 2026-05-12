@@ -31,12 +31,17 @@ defaults:
       model: "yolov8n.pt"
       conf: 0.35
       classes: [0]
+  # 可选：检测区域（归一化坐标 x1,y1,x2,y2，不写=全帧）
+  # 画面裁剪后做 motion 和 AI 检测，截图/视频仍保存原始全尺寸
+  # region: [0, 0, 1, 1]
 
 cameras:
   - id: xiaomi1
     enabled: true
     # RTSP 直连
     stream_url: "rtsp://127.0.0.1:8554/xiaomi1"
+    # 可选：检测区域（不写则全帧）
+    # region: [0.1, 0.2, 0.9, 0.95]
     # 本路可选覆盖 defaults
     # motion:
     #   min_change_ratio: 0.02

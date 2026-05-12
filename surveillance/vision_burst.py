@@ -9,6 +9,7 @@ import numpy as np
 
 from surveillance.detectors.base import VisionResult
 from surveillance.detectors.pipeline import AIPipeline, PipelineResult
+from surveillance.region import crop_to_region
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ def sample_vision_burst(
     stop: threading.Event,
     cfg: VisionBurstConfig,
     first_frame: np.ndarray,
+    region=None,
 ) -> list[tuple[np.ndarray, PipelineResult]]:
     """
     在 [t0, t0+window_sec] 内按 interval 采样：首帧用 first_frame，其后 read_frame。
@@ -96,7 +98,8 @@ def sample_vision_burst(
     t0 = time.monotonic()
     end = t0 + cfg.window_sec
 
-    r0 = pipeline.run(first_frame, camera_id=camera_id, rtsp_url=None)
+    infer_frame = crop_to_region(first_frame, region)
+    r0 = pipeline.run(infer_frame, camera_id=camera_id, rtsp_url=None)
     samples.append((first_frame.copy(), r0))
 
     next_t = t0 + cfg.interval_sec
@@ -114,7 +117,8 @@ def sample_vision_burst(
         fr = stream.read_frame()
         if fr is None:
             continue
-        r = pipeline.run(fr, camera_id=camera_id, rtsp_url=None)
+        infer_fr = crop_to_region(fr, region)
+        r = pipeline.run(infer_fr, camera_id=camera_id, rtsp_url=None)
         samples.append((fr.copy(), r))
         next_t += cfg.interval_sec
 
