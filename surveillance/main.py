@@ -12,8 +12,10 @@ from surveillance.config_loader import camera_effective_config, load_config
 from surveillance.motion import MotionConfig, MotionGate
 from surveillance.stream import RTSPReader, StreamConfig
 from surveillance.detectors.pipeline import AIPipeline, PipelineResult
-from surveillance.hooks import HooksManager
 from surveillance.recordings import RecordingManager
+from surveillance.notifiers import Notifier
+from surveillance.notifiers.hass import HassNotifier
+from surveillance.notifiers.hooks import HooksNotifier
 from surveillance.http_server import start_http_server
 from surveillance.region import crop_to_region
 from surveillance.vision_burst import (
@@ -60,6 +62,7 @@ def camera_worker(
     full_cfg: dict[str, Any],
     camera_row: dict[str, Any],
     stop: threading.Event,
+    notifiers: list[Notifier] | None = None,
 ) -> None:
     eff = camera_effective_config(full_cfg, camera_row)
     cam_id = str(eff.get("id") or "camera")
@@ -87,7 +90,6 @@ def camera_worker(
     check_iv = motion_cfg.check_interval_sec
     pipeline = AIPipeline.from_camera_detectors(eff.get("detectors"))
     rec_mgr = _recordings_mgr(eff, cam_id)
-    hooks_mgr = HooksManager(eff.get("hooks"))
     ai_cd = _ai_cooldown_sec(eff)
     last_ai = 0.0
 
@@ -112,7 +114,8 @@ def camera_worker(
                 ev_data = rec_mgr.fire("motion", m_cfg, raw_frame, stream, stop)
                 if ev_data:
                     ev_data["camera_id"] = cam_id
-                    hooks_mgr.fire("motion", ev_data)
+                    for n in (notifiers or []):
+                        n.fire("motion", ev_data)
 
             now = time.time()
             if now - last_ai < ai_cd:
@@ -196,7 +199,8 @@ def camera_worker(
                     if ev_data:
                         ev_data["camera_id"] = cam_id
                         ev_data["labels"] = flat_labels
-                        hooks_mgr.fire(label, ev_data)
+                        for n in (notifiers or []):
+                            n.fire(label, ev_data)
 
             log.info("[%s] 检测到显著目标: %s", cam_id, sig)
     finally:
@@ -250,6 +254,12 @@ def main() -> None:
 
     stop = threading.Event()
 
+    notifiers: list[Notifier] = []
+    for cls in (HassNotifier, HooksNotifier):
+        n = cls.from_config(raw)
+        if n:
+            notifiers.append(n)
+
     def handle_sig(*_: Any) -> None:
         log.info("收到退出信号，正在停止…")
         stop.set()
@@ -266,6 +276,7 @@ def main() -> None:
             target=camera_worker,
             name=f"cam-{cam.get('id', '?')}",
             args=(raw, cam, stop),
+            kwargs={"notifiers": notifiers},
             daemon=False,
         )
         threads.append(t)

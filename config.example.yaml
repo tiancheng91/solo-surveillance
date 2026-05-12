@@ -81,3 +81,15 @@ cameras:
   # - id: cam2
   #   enabled: false
   #   stream_url: "rtsp://..."
+
+# ─── Home Assistant 集成（可选）───
+# 启用后将事件推送到 HA 事件总线（使用 Python urllib，零额外依赖）
+# hass:
+#   enabled: true
+#   url: "http://homeassistant:8123"
+#   token: "${HASS_TOKEN}"
+
+# ─── 全局 Hook 脚本（可选）───
+# 每个事件都会调用所有已注册脚本，脚本根据 --event-type 自行判断是否处理
+# hooks:
+#   - command: scripts/event_logger.sh

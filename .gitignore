@@ -26,4 +26,4 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-scripts/
+scripts/pub_event.sh

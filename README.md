@@ -102,6 +102,23 @@ solo-surveillance --http 0.0.0.0:9090  # 指定监听地址和端口
 
 ---
 
+## Home Assistant 集成
+
+支持将检测到的事件实时推送到 Home Assistant 事件总线，用于自动化联动（如灯光、报警、通知）。使用 Python 标准库实现，零额外依赖。
+
+```yaml
+hass:
+  enabled: true
+  url: "http://homeassistant:8123"
+  token: "${HASS_TOKEN}"
+```
+
+配置后，每个事件（`camera.motion`、`camera.person`、`camera.feeding` 等）会自动 POST 到 HA 的 `/api/events/{event_type}`。
+
+> 详细配置说明见 [docs/homeassistant.md](docs/homeassistant.md)。
+
+---
+
 *以下章节面向进阶用户，详细介绍配置选项与系统设计。*
 
 ---
