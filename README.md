@@ -1,6 +1,15 @@
 # solo-surveillance
 
+<p>
+  <img alt="License" src="https://img.shields.io/github/license/tiancheng91/solo-surveillance?style=flat-square">
+  <img alt="Python" src="https://img.shields.io/badge/python-%3E%3D3.11-blue?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey?style=flat-square">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/tiancheng91/solo-surveillance?style=flat-square">
+</p>
+
 自托管、轻量、纯本地运行的 AI 监控 NVR 系统，支持 RTSP 直连与 ONVIF 自动发现，内置 Web UI 回放与 Home Assistant 集成。
+
+![Web UI 截图](docs/webui.png)
 
 ### 设计理念
 

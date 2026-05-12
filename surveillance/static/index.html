@@ -20,6 +20,14 @@
 .play-overlay:hover { background:rgba(0,0,0,.25) }
 .play-overlay svg { width:64px; height:64px; opacity:.9; filter:drop-shadow(0 4px 12px rgba(0,0,0,.6)); transition:transform .15s }
 .play-overlay:hover svg { transform:scale(1.08) }
+#timelineBar { position:fixed; top:50%; translate:0 -50%; z-index:40; width:76px; height:calc(100vh - 120px); cursor:pointer; user-select:none; display:none; flex-direction:row; align-items:stretch }
+#timelineLabels { flex:1; position:relative; font-size:10px; color:#9ca3af; pointer-events:none; font-family:ui-monospace,monospace; margin-left:2px }
+.tl-label { position:absolute; left:4px; translate:0 -50%; white-space:nowrap }
+#timelineTrackWrapper { width:24px; position:relative; flex-shrink:0 }
+#timelineTrack { position:absolute; left:50%; translate:-50%; width:3px; height:100%; background:#e5e7eb; border-radius:4px }
+#timelineHighlights { position:absolute; inset:0; pointer-events:none }
+.tl-seg { position:absolute; left:50%; translate:-50%; width:7px; background:#facc15; border-radius:2px; pointer-events:none }
+#timelineThumb { position:absolute; left:50%; translate:-50% 0; width:13px; height:13px; border-radius:999px; background:#fff; border:1.5px solid #9ca3af; box-shadow:0 1px 3px rgba(0,0,0,.15); pointer-events:none; top:0 }
 </style>
 
 <div class="max-w-3xl mx-auto p-4 sm:p-6 font-sans">
@@ -35,6 +43,7 @@
     <span class="text-gray-300 text-sm self-center">—</span>
     <input type="time" id="tTo" value="23:59" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
     <button id="queryBtn" class="h-9 rounded-md bg-gray-900 px-4 text-sm font-medium text-white shadow-sm hover:bg-gray-800 active:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400">Query</button>
+    <button id="sortBtn" class="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400">↓ 时间</button>
   </div>
 
   <div id="results" class="space-y-2"></div>
@@ -45,11 +54,14 @@
   <button class="lightbox-close" onclick="closeLightbox()">✕</button>
   <div id="lbContent"></div>
 </div>
+<div id="timelineBar"><div id="timelineTrackWrapper"><div id="timelineTrack"></div><div id="timelineHighlights"></div><div id="timelineThumb"></div></div><div id="timelineLabels"></div></div>
 
 <script>
 const $=(s)=>document.querySelector(s);
-const camSel=$("#camera"), dateInput=$("#date"), tFrom=$("#tFrom"), tTo=$("#tTo"), results=$("#results"), queryBtn=$("#queryBtn");
+const camSel=$("#camera"), dateInput=$("#date"), tFrom=$("#tFrom"), tTo=$("#tTo"), results=$("#results"), queryBtn=$("#queryBtn"), sortBtn=$("#sortBtn");
 const lb=$("#lightbox"), lbContent=$("#lbContent");
+let sortAsc=false, lastEvents=null, timelineEvents=[];
+const tlBar=$("#timelineBar"), tlHighlights=$("#timelineHighlights"), tlThumb=$("#timelineThumb"), tlLabels=$("#timelineLabels");
 
 // lightbox
 function openLightbox(snapUrl, clipUrl){
@@ -100,6 +112,88 @@ function fmtTime(iso){
   const d=new Date(iso);
   return d.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
 }
+function sortEvents(arr){
+  const c=sortAsc?1:-1;
+  return arr.slice().sort((a,b)=>(a.start_time>b.start_time?1:-1)*c);
+}
+function buildTimeline(events, fromTime, toTime){
+  tlHighlights.innerHTML="";
+  tlLabels.innerHTML="";
+  timelineEvents=events;
+  if(!events.length){tlBar.style.display="none";return}
+  tlBar.style.display="flex";
+  positionTimelineBar();
+  const from=new Date(fromTime).getTime(), to=new Date(toTime).getTime();
+  const dur=to-from;
+  if(dur<=0) return;
+  const BUCKET_MIN=60000;
+  const bucketMs=Math.max(BUCKET_MIN, dur/200);
+  const n=Math.ceil(dur/bucketMs);
+  const buckets=new Array(n).fill(0);
+  events.forEach(e=>{
+    const t=new Date(e.start_time).getTime();
+    const idx=Math.min(Math.floor((t-from)/bucketMs), n-1);
+    if(idx>=0) buckets[idx]=1;
+  });
+  const segs=[];
+  let start=-1;
+  buckets.forEach((v,i)=>{
+    if(v && start<0) start=i;
+    else if(!v && start>=0){segs.push([start,i-1]);start=-1}
+  });
+  if(start>=0) segs.push([start,n-1]);
+  const segHeight=(100/n);
+  segs.forEach(([s,e])=>{
+    const d=document.createElement("div");
+    d.className="tl-seg";
+    d.style.top=(s*segHeight)+"%";
+    d.style.height=((e-s+1)*segHeight)+"%";
+    tlHighlights.appendChild(d);
+  });
+  tlThumb.style.top="0";
+  // hour labels
+  const f=new Date(fromTime), t=new Date(toTime);
+  const fH=f.getHours(), tH=t.getHours();
+  let h=(f.getMinutes()>0||f.getSeconds()>0)?fH+1:fH;
+  while(h<=tH){
+    const lt=new Date(f);
+    lt.setHours(h,0,0,0);
+    const ratio=(lt.getTime()-from)/dur;
+    const lbl=document.createElement("div");
+    lbl.className="tl-label";
+    lbl.textContent=String(h).padStart(2,"0")+":00";
+    lbl.style.top=(ratio*100)+"%";
+    tlLabels.appendChild(lbl);
+    h++;
+  }
+}
+function positionTimelineBar(){
+  const content=document.querySelector(".max-w-3xl");
+  if(!content) return;
+  const cr=content.getBoundingClientRect();
+  tlBar.style.left=(cr.right+16)+"px";
+}
+function jumpToTime(clientY){
+  const rect=tlBar.getBoundingClientRect();
+  let ratio=(clientY-rect.top)/rect.height;
+  ratio=Math.max(0,Math.min(1,ratio));
+  tlThumb.style.top=(ratio*100)+"%";
+  if(!timelineEvents.length) return;
+  const fromTime=tFrom.value||"00:00", toTime=tTo.value||"23:59";
+  const date=dateInput.value;
+  const from=new Date(date+"T"+fromTime+":00").getTime();
+  const to=new Date(date+"T"+toTime+":00").getTime();
+  const target=from+ratio*(to-from);
+  let best=timelineEvents[0];
+  let bestDist=Math.abs(new Date(best.start_time).getTime()-target);
+  for(let i=1;i<timelineEvents.length;i++){
+    const d=Math.abs(new Date(timelineEvents[i].start_time).getTime()-target);
+    if(d<bestDist){bestDist=d;best=timelineEvents[i]}
+  }
+  const cards=results.querySelectorAll(".event-card");
+  const idx=timelineEvents.indexOf(best);
+  if(cards[idx]) cards[idx].scrollIntoView({behavior:"smooth",block:"center"});
+}
 
 dateInput.value=new Date().toISOString().slice(0,10);
 
@@ -114,7 +208,13 @@ function loadTimeline(){
   obs.disconnect();
   const start=date+"T"+from+":00", end=date+"T"+to+":00";
   fetch("/api/timeline/range?camera="+encodeURIComponent(cam)+"&start="+encodeURIComponent(start)+"&end="+encodeURIComponent(end))
-    .then(r=>r.json()).then(render).catch(()=>{results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">Error</div>'});
+    .then(r=>r.json()).then(data=>{
+      lastEvents=data;
+      sortAsc=false;
+      sortBtn.textContent="↓ 时间";
+      buildTimeline(data,start,end);
+      render(sortEvents(data));
+    }).catch(()=>{results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">Error</div>'});
 }
 
 function render(events){
@@ -129,7 +229,7 @@ function render(events){
         +(hasClip?'<div class="play-badge"><svg viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>':'')
         +'</div>'
       : "";
-    return '<div class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">'
+    return '<div class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm event-card">'
       +'<div class="flex items-start gap-3">'
       +'<div class="text-xs text-gray-400 tabular-nums whitespace-nowrap mt-0.5 min-w-[64px]">'+t+'</div>'
       +'<div class="flex-1 min-w-0">'
@@ -150,4 +250,14 @@ results.addEventListener("click",function(e){
 queryBtn.onclick=loadTimeline;
 camSel.onchange=loadTimeline;
 dateInput.onchange=loadTimeline;
+sortBtn.onclick=function(){
+  sortAsc=!sortAsc;
+  sortBtn.textContent=(sortAsc?"↑ ":"↓ ")+"时间";
+  if(lastEvents) render(sortEvents(lastEvents));
+};
+let tlDrag=false;
+tlBar.addEventListener("mousedown",function(e){tlDrag=true;jumpToTime(e.clientY)});
+document.addEventListener("mousemove",function(e){if(tlDrag)jumpToTime(e.clientY)});
+document.addEventListener("mouseup",function(){tlDrag=false});
+window.addEventListener("resize",function(){if(tlBar.style.display!="none")positionTimelineBar()});
 </script>
