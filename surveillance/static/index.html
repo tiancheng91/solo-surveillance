@@ -116,10 +116,10 @@ function sortEvents(arr){
   const c=sortAsc?1:-1;
   return arr.slice().sort((a,b)=>(a.start_time>b.start_time?1:-1)*c);
 }
-function buildTimeline(events, fromTime, toTime){
+function buildTimeline(events, fromTime, toTime, flip){
   tlHighlights.innerHTML="";
   tlLabels.innerHTML="";
-  timelineEvents=events;
+  timelineEvents=flip?events.slice().reverse():events.slice();
   if(!events.length){tlBar.style.display="none";return}
   tlBar.style.display="flex";
   positionTimelineBar();
@@ -146,11 +146,16 @@ function buildTimeline(events, fromTime, toTime){
   segs.forEach(([s,e])=>{
     const d=document.createElement("div");
     d.className="tl-seg";
-    d.style.top=(s*segHeight)+"%";
-    d.style.height=((e-s+1)*segHeight)+"%";
+    if(flip){
+      d.style.top=((1-(e+1)/n)*100)+"%";
+      d.style.height=((e-s+1)*segHeight)+"%";
+    }else{
+      d.style.top=(s*segHeight)+"%";
+      d.style.height=((e-s+1)*segHeight)+"%";
+    }
     tlHighlights.appendChild(d);
   });
-  tlThumb.style.top="0";
+  tlThumb.style.top=flip?"100%":"0";
   // hour labels
   const f=new Date(fromTime), t=new Date(toTime);
   const fH=f.getHours(), tH=t.getHours();
@@ -159,10 +164,11 @@ function buildTimeline(events, fromTime, toTime){
     const lt=new Date(f);
     lt.setHours(h,0,0,0);
     const ratio=(lt.getTime()-from)/dur;
+    const pos=flip?1-ratio:ratio;
     const lbl=document.createElement("div");
     lbl.className="tl-label";
     lbl.textContent=String(h).padStart(2,"0")+":00";
-    lbl.style.top=(ratio*100)+"%";
+    lbl.style.top=(pos*100)+"%";
     tlLabels.appendChild(lbl);
     h++;
   }
@@ -183,7 +189,8 @@ function jumpToTime(clientY){
   const date=dateInput.value;
   const from=new Date(date+"T"+fromTime+":00").getTime();
   const to=new Date(date+"T"+toTime+":00").getTime();
-  const target=from+ratio*(to-from);
+  // flip time mapping so top of timeline matches first card
+  const target=sortAsc?from+ratio*(to-from):to-ratio*(to-from);
   let best=timelineEvents[0];
   let bestDist=Math.abs(new Date(best.start_time).getTime()-target);
   for(let i=1;i<timelineEvents.length;i++){
@@ -212,7 +219,7 @@ function loadTimeline(){
       lastEvents=data;
       sortAsc=false;
       sortBtn.textContent="↓ 时间";
-      buildTimeline(data,start,end);
+      buildTimeline(data,start,end,true);
       render(sortEvents(data));
     }).catch(()=>{results.innerHTML='<div class="text-center text-gray-400 py-12 text-sm">Error</div>'});
 }
@@ -253,7 +260,11 @@ dateInput.onchange=loadTimeline;
 sortBtn.onclick=function(){
   sortAsc=!sortAsc;
   sortBtn.textContent=(sortAsc?"↑ ":"↓ ")+"时间";
-  if(lastEvents) render(sortEvents(lastEvents));
+  if(lastEvents){
+    const d=dateInput.value, f=tFrom.value||"00:00", t=tTo.value||"23:59";
+    buildTimeline(lastEvents,d+"T"+f+":00",d+"T"+t+":00",!sortAsc);
+    render(sortEvents(lastEvents));
+  }
 };
 let tlDrag=false;
 tlBar.addEventListener("mousedown",function(e){tlDrag=true;jumpToTime(e.clientY)});
