@@ -21,6 +21,18 @@
 
 ## 快速开始
 
+### 一键安装 & 启动（推荐）
+
+```bash
+# 使用 uvx（推荐——自动隔离环境，无需先安装）
+uvx solo-surveillance --http 0.0.0.0:8080
+
+# 或使用 pip 全局安装
+pip install solo-surveillance && solo-surveillance --http 0.0.0.0:8080
+```
+
+> 首次启动会自动下载 YOLOv8 模型。默认读取当前目录的 `config.yaml`，可按下文步骤配置相机后重新启动。
+
 ### 前置要求
 
 - Python >= 3.11
