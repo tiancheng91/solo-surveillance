@@ -1,0 +1,67 @@
+name: Bug Report
+description: Report a bug to help improve solo-surveillance
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of solo-surveillance are you running?
+      placeholder: "0.3.0"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Start solo-surveillance with config X
+        2. Trigger motion on camera Y
+        3. See error Z
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Please run with `solo-surveillance -v` and paste relevant log lines.
+      render: shell
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Config (sans secrets)
+      description: Paste your config.yaml with passwords/URLs redacted.
+      render: yaml
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: camera_type
+    attributes:
+      label: Camera Type
+      options:
+        - RTSP
+        - ONVIF
+        - Other

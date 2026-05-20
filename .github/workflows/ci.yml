@@ -23,5 +23,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
+      - name: Run tests
+        run: uv run pytest -v --tb=short -m "not slow"
+
       - name: Build package
         run: uv build
