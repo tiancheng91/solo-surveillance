@@ -60,7 +60,7 @@ cameras:
     stream_url: "onvif://admin:password@192.168.1.100:80?profile=0"
 ```
 
-> 添加多路相机只需在 `cameras` 下继续追加条目。全局默认值在 `defaults` 中，每路相机可选择性覆盖。
+> 完整配置参考 `config.example.yaml`（含 LLM 视觉、HA 集成、Hook 脚本等全部选项）。
 
 ### 3. 启动
 
@@ -128,68 +128,25 @@ hass:
 
 YAML 格式，`defaults` 块设置全局默认值，`cameras` 列表中每路相机可选择性覆盖。配置值支持 `${ENV_VAR}` 环境变量替换。
 
+核心结构：
+
 ```yaml
-# ───────── 全局默认值 ─────────
 defaults:
+  motion:         # 运动检测参数
+  ai:             # AI 推理参数（帧数、冷却）
+  recordings:     # 截图/视频录制
+  detectors:      # YOLO / LLM 检测器
+  region:         # 可选检测区域
 
-  # ─── 运动检测 ───
-  motion:
-    resize_width: 320        # 帧缩放到此宽度再比对，值越小越快但越不精确
-    blur_ksize: 7            # 高斯模糊核大小（奇数），越大对噪点越不敏感
-    diff_threshold: 28       # 像素差值阈值（0-255），越大越不容易触发
-    min_change_ratio: 0.012  # 变化像素占比阈值（1.2%），超过此值判定为运动
-    ai_cooldown_sec: 10.0    # AI 检测冷却（秒），触发后在此时间内不再重复检测
-    check_interval_sec: 0.2  # 运动检测采样间隔（秒）；0=每帧检测，>0 跳过中间帧降低 CPU
+cameras:          # 相机列表，每路可覆盖 defaults
 
-  # ─── 多帧爆发采样 ───
-  # 开启后 motion 触发时短时间内连续采集多帧分别推理，结果合并取最高置信度
-  vision_burst:
-    enabled: false           # true=启用（提高检测准确率，增加算力消耗）
-    window_sec: 1.2          # 采样窗口长度（秒）
-    interval_sec: 0.3        # 相邻采样间隔（秒）
-    min_interval_sec: 0.05   # 最小采样间隔下限，防止 CPU 满载
-
-  # ─── 事件录制 ───
-  recordiings:
-    base_dir: "data"          # 录制文件根目录
-    motion:                   # 运动触发（AI 检测前，记录所有画面变动）
-      snapshot: false         # 是否保存截图
-      clip: false             # 是否保存视频片段
-      clip_seconds: 5         # 视频片段时长（秒）
-    person:                   # AI 检测到人
-      snapshot: true          # 建议开启
-      clip: false
-      clip_seconds: 10
-
-  # ─── AI 检测器 ───
-  detectors:
-    person:                            # 人体检测器
-      enabled: true
-      model: "yolov8n.pt"             # YOLO 模型文件（首次自动下载，可选 yolov8s.pt 等）
-      conf: 0.35                       # 检测置信度阈值（0-1）
-      classes: [0]                     # COCO 类别 ID，[0] 代表人；空列表检测所有类别
-
-  # ─── 外部 Hook 脚本（可选） ───
-  hooks:
-    person:
-      - command: /path/to/notify.sh
-    # motion:
-    #   - command: /path/to/motion.sh
-
-
-# ───────── 相机列表 ─────────
-cameras:
-  - id: xiaomi1               # 相机唯一标识
-    enabled: true             # false=禁用此路
-    stream_url: "rtsp://..."  # rtsp:// 直连或 onvif:// 自动发现
-
-    # 以下字段可选，不写则回退到 defaults
-    # motion:
-    #   min_change_ratio: 0.02
-    # detectors:
-    #   person:
-    #     conf: 0.4
+hass:             # 可选：Home Assistant 集成
+hooks:            # 可选：外部脚本
+llm:              # 可选：LLM API 连接配置
 ```
+
+> 完整配置见 `config.example.yaml`，涵盖所有选项及详细注释。
+> 详细配置说明与最佳实践见 [docs/configuration.md](docs/configuration.md)，场景配置示例见 [docs/scenarios.md](docs/scenarios.md)。
 
 > **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`  
 > - `profile`：media profile 索引，默认 0  
@@ -207,14 +164,16 @@ RTSP / ONVIF 流 ──> MotionGate (帧差门控)
                      │是
               [AI cooldown 冷却检查]
                      │
-              AIPipeline 运行（单帧 / vision_burst）
+              collect_frames() 采集多帧
+                     │
+              AIPipeline.run_batch() 批量推理
                      │
               显著标签 ≥ threshold?
                      │否└─ 跳过
                      │是
               录制截图/视频 → 追加 timeline.csv
                      │
-              Hook 脚本触发 / HA 事件推送
+              Notifier 推送（HA / Hook 脚本）
 ```
 
 ## 录制与 Timeline
@@ -241,16 +200,15 @@ start_time,end_time,event_type,snapshot_path,clip_path
 
 ## Hook 脚本
 
-事件触发时调用外部命令，用于发送通知、联动其他系统：
+Hook 脚本在 `config.yaml` 根级别配置（全局，所有事件类型均触发所有脚本）：
 
 ```yaml
-defaults:
-  hooks:
-    person:
-      - command: /path/to/notify.sh
+# 可选：事件触发时执行的外部脚本
+hooks:
+  - command: scripts/event_logger.sh
 ```
 
-Hook 接收命令行参数：
+每个脚本接收命令行参数：
 
 ```
 --camera-id xiaomi1
@@ -268,7 +226,7 @@ Hook 接收命令行参数：
 
 1. 继承 `VisionDetector` 或 `AudioDetector`（`surveillance/detectors/base.py`）
 2. 设置唯一 `name` 类变量
-3. 实现 `analyze()` 返回 `VisionResult` / `AudioResult`
+3. 实现 `analyze_batch()` 返回 `VisionResult` / `AudioResult`（接收多帧，自行决定如何使用）
 4. 在 `AIPipeline.from_camera_detectors()` 中注册
 
 ```python
@@ -277,7 +235,7 @@ from surveillance.detectors.base import VisionDetector, VisionResult, VisionCont
 class FireDetector(VisionDetector):
     name = "fire_detector"
 
-    def analyze(self, frame_bgr, ctx: VisionContext | None = None):
+    def analyze_batch(self, frames, ctx: VisionContext | None = None):
         # 火焰检测逻辑...
         return VisionResult(labels={"fire": 0.92})
 ```
@@ -291,13 +249,14 @@ class FireDetector(VisionDetector):
 | `stream.py` | RTSPReader — cv2.VideoCapture 封装，自动重连 |
 | `onvif.py` | ONVIF 设备连接、RTSP 地址发现 |
 | `motion.py` | MotionGate — 帧差运动门控 |
+| `region.py` | 检测区域裁剪（归一化坐标） |
 | `detectors/base.py` | 检测器抽象基类与结果数据结构 |
 | `detectors/person_yolo.py` | YOLOv8 人体检测 |
+| `detectors/llm_vision.py` | LLM 视觉场景识别 |
 | `detectors/pipeline.py` | AIPipeline — 调度检测器，阈值门控 |
-| `vision_burst.py` | 多帧爆发采样、合并与最佳帧选取 |
+| `vision_burst.py` | 多帧采集辅助（collect_frames） |
 | `recordings.py` | 截图/视频录制 + timeline.csv 管理 |
-| `hooks.py` | Hook 脚本管理器 |
-| `hass.py` | Home Assistant REST API 事件推送 |
+| `notifiers/` | Notifier 统一接口（HA + Hook 脚本） |
 | `http_server.py` | 内置 HTTP 服务器 + Web UI |
 
 ### 线程模型
@@ -316,6 +275,7 @@ class FireDetector(VisionDetector):
 - PyYAML（>= 6.0）
 - ultralytics（>= 8.0.0）
 - onvif-zeep（>= 0.2.0，仅 ONVIF 需要；纯 RTSP 用户可忽略）
+- anthropic / openai（可选，LLM 视觉场景识别需要）
 
 ## License
 
