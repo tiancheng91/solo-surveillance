@@ -160,7 +160,7 @@ class RecordingManager:
             writer.write(first_frame)
             deadline = time.monotonic() + duration_sec
             while time.monotonic() < deadline and not stop.is_set():
-                frame = stream.read_frame()
+                frame = stream.read_frame(stop)
                 if frame is not None:
                     writer.write(frame)
         except Exception:

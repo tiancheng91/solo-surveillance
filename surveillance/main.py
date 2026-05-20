@@ -50,11 +50,6 @@ def _recordings_mgr(eff: dict[str, Any], cam_id: str) -> RecordingManager:
     return RecordingManager(camera_id=cam_id, base_dir=base, recordings_cfg=cfg)
 
 
-def _vision_burst_cfg(eff: dict[str, Any]) -> VisionBurstConfig:
-    vb = eff.get("vision_burst")
-    return VisionBurstConfig.from_dict(vb if isinstance(vb, dict) else None)
-
-
 def _flat_vision_labels(result: PipelineResult) -> dict[str, float]:
     out: dict[str, float] = {}
     for vr in result.vision.values():
@@ -73,7 +68,7 @@ def camera_worker(
     cam_id = str(eff.get("id") or "camera")
 
     # stream_url 支持 rtsp:// 和 onvif:// 两种协议
-    stream_url = str(eff.get("stream_url") or eff.get("rtsp_url") or "").strip()
+    stream_url = str(eff.get("stream_url") or "").strip()
     if not stream_url:
         log.error("相机 %s 未配置 stream_url，跳过", cam_id)
         return
@@ -101,8 +96,8 @@ def camera_worker(
     log.info("线程启动: %s", cam_id)
     try:
         while not stop.is_set():
-            stream.skip_frames(check_iv)
-            frame = stream.read_frame()
+            stream.skip_frames(check_iv, stop)
+            frame = stream.read_frame(stop)
             if frame is None:
                 continue
             raw_frame = frame.copy()

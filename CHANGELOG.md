@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1 (2026-05-20)
+
+### Fixes
+
+- Ctrl+C 无法退出程序：`read_frame()`/`skip_frames()` 新增 `stop` 事件参数，阻塞操作分段轮询退出信号（#stream, #recordings）
+- 清理死代码：移除已无调用方的 `_vision_burst_cfg` 和 `rtsp_url` 备选 key
+- `motion.blur_ksize` 默认值改为 7，与 `config.example.yaml` 一致
+
+### Project
+
+- 补充 MIT LICENSE 文件
+- 新增英文/日文 README 翻译
+- README 结构重构：新增"工作原理"、功能表格、项目结构树
+- 新增 CI 测试步骤、PyPI/CI 状态徽章
+- 新增 CONTRIBUTING.md 和 Issue/PR 模板
+- 创建 GitHub Releases（v0.1.0 ~ v0.3.0）
+
 ## 0.3.0 (2026-05-13)
 
 ### Features

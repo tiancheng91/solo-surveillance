@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class MotionConfig:
     resize_width: int = 320
-    blur_ksize: int = 5
+    blur_ksize: int = 7
     diff_threshold: int = 28
     min_change_ratio: float = 0.012
     check_interval_sec: float = 0.2
@@ -24,7 +24,7 @@ class MotionConfig:
             return cls()
         return cls(
             resize_width=int(d.get("resize_width", 320)),
-            blur_ksize=int(d.get("blur_ksize", 5)),
+            blur_ksize=int(d.get("blur_ksize", 7)),
             diff_threshold=int(d.get("diff_threshold", 28)),
             min_change_ratio=float(d.get("min_change_ratio", 0.012)),
             check_interval_sec=float(d.get("check_interval_sec", 0.2)),
