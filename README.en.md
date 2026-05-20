@@ -10,22 +10,41 @@
 
 > [🇨🇳 中文](README.md) &nbsp; [🇯🇵 日本語](README.ja.md)
 
-Self-hosted, lightweight, fully local AI surveillance NVR system. Supports RTSP direct connection and ONVIF auto-discovery, YOLOv8 person detection, built-in Web UI playback, and Home Assistant integration.
+Self-hosted, lightweight, fully local AI surveillance NVR system.  
+Connects IP cameras via RTSP or ONVIF, uses motion detection to trigger AI inference, and records events — all on your local machine with zero cloud dependencies.
 
 ![Web UI Screenshot](docs/webui.png)
 
+## How It Works
+
+solo-surveillance monitors your cameras and automatically decides when something worth recording happens. It uses a **three-stage pipeline**:
+
+1. **Stream ingestion** — connects to each camera via RTSP/ONVIF, decodes frames
+2. **Motion gating** — frame-diff detection filters out static scenes; only frames with real motion reach the AI
+3. **AI detection** — YOLOv8 person detection and/or LLM scene understanding run on motion-triggered frames
+
+MotionGate is the performance foundation. By filtering static frames before any AI inference, it typically reduces AI calls by **90%+** in real-world deployments.
+
+Each camera runs in its own `threading.Thread` with fully independent `RTSPReader`, `MotionGate`, and `AIPipeline` instances — no shared mutable state between camera workers.
+
 ## Features
 
-- **Multi-camera** — Single process, multi-threaded; each camera independently configured and running
-- **Dual protocol** — `rtsp://` direct connection or `onvif://` auto-discover RTSP addresses
-- **Motion gating** — Frame-diff pre-filtering skips non-event frames before AI, drastically reducing compute cost
-- **AI detection** — Built-in YOLOv8 person detection, extensible with custom detectors
-- **Scene-based recording** — Configure snapshot/video clip saving independently per event type (motion / person / llm_*)
-- **Web UI** — Built-in HTTP server, filter events by camera/date/time range with timeline navigation
-- **Home Assistant integration** — Push event notifications via REST API
-- **Hook scripts** — Trigger external scripts on events for flexible integration
-- **Auto-reconnect** — RTSP stream disconnection auto-recovery, suitable for 7x24 operation
-- **Fully local** — All video streams, recordings, and AI inference run locally, no cloud dependency
+| Feature | Description | Config Key |
+|---|---|---|
+| Multi-camera | One thread per camera, independent config and runtime | `cameras[]` |
+| Dual protocol | `rtsp://` direct or `onvif://` auto-discover | `stream_url` |
+| Motion gating | Frame-diff detection, pre-filters static frames | `motion.*` |
+| YOLOv8 person detection | Built-in YOLO, auto-downloads model on first run | `detectors.person` |
+| LLM vision scenes | Complex scene understanding via Anthropic/OpenAI API | `detectors.llm_vision` |
+| Region cropping | Detect only within normalized ROI; full-res recording preserved | `region` |
+| AI batch inference | Multi-frame sampling with max-confidence merging | `ai.frames` |
+| Event recording | Per-event-type snapshots (JPEG) and clips (MP4) | `recordings.*` |
+| Timeline index | CSV-based event timeline with start/end times and file paths | auto-managed |
+| Web UI | Built-in HTTP server with timeline navigation, filtering, playback | `--http` flag |
+| Home Assistant | REST API event push on significant detections | `hass.*` |
+| Hook scripts | Execute external commands on events | `hooks.*` |
+| Auto-reconnect | Automatic RTSP stream recovery on disconnect | built into `RTSPReader` |
+| Fully local | All inference, recording, and playback runs on-device | — |
 
 ## Quick Start
 
@@ -243,24 +262,34 @@ class FireDetector(VisionDetector):
         return VisionResult(labels={"fire": 0.92})
 ```
 
-## Architecture
+## Project Structure
 
-| Module | Responsibility |
-|---|---|
-| `main.py` | Entry point: argparse, thread management, signal handling |
-| `config_loader.py` | YAML loading, deep_merge, env var substitution |
-| `stream.py` | RTSPReader — cv2.VideoCapture wrapper, auto-reconnect |
-| `onvif.py` | ONVIF device connection, RTSP address discovery |
-| `motion.py` | MotionGate — frame-diff motion gating |
-| `region.py` | Detection region cropping (normalized coordinates) |
-| `detectors/base.py` | Detector abstract base classes and result data types |
-| `detectors/person_yolo.py` | YOLOv8 person detection |
-| `detectors/llm_vision.py` | LLM vision scene recognition |
-| `detectors/pipeline.py` | AIPipeline — orchestrates detectors, threshold gating |
-| `vision_burst.py` | Multi-frame collection helper (collect_frames) |
-| `recordings.py` | Snapshot/clip recording + timeline.csv management |
-| `notifiers/` | Notifier unified interface (HA + Hook scripts) |
-| `http_server.py` | Built-in HTTP server + Web UI |
+```
+solo-surveillance/
+├── config.example.yaml              # Example configuration with all options
+├── pyproject.toml                   # Package metadata, dependencies, CLI entry point
+├── surveillance/                    # Core application package
+│   ├── __main__.py                  # `python -m surveillance` entry point
+│   ├── main.py                      # CLI parser, per-camera thread orchestration
+│   ├── config_loader.py             # YAML loading, deep_merge, ${ENV_VAR} expansion
+│   ├── stream.py                    # RTSPReader — frame capture with auto-reconnect
+│   ├── motion.py                    # MotionGate — frame-diff motion detection
+│   ├── region.py                    # Crop frame to normalized ROI
+│   ├── vision_burst.py              # Multi-frame burst sampling and result merging
+│   ├── recordings.py                # Snapshot/clip recording and timeline CSV
+│   ├── onvif.py                     # ONVIF discovery → RTSP URL resolution
+│   ├── http_server.py               # Built-in Web UI and API server
+│   ├── static/index.html            # Single-page Web UI
+│   └── detectors/
+│       ├── base.py                  # Abstract VisionDetector / AudioDetector
+│       ├── person_yolo.py           # YOLOv8 person detection
+│       ├── llm_vision.py            # LLM API scene analysis
+│       └── pipeline.py              # AIPipeline — orchestrates all detectors
+└── docs/                            # Documentation
+    ├── configuration.md             # Detailed config guide and best practices
+    ├── scenarios.md                 # Ready-to-use scenario presets
+    └── homeassistant.md             # Home Assistant integration details
+```
 
 ### Threading Model
 
@@ -272,13 +301,16 @@ class FireDetector(VisionDetector):
 
 ## Dependencies
 
-- Python >= 3.11
-- opencv-python-headless (>= 4.8.0)
-- numpy (>= 1.24.0)
-- PyYAML (>= 6.0)
-- ultralytics (>= 8.0.0)
-- onvif-zeep (>= 0.2.0, ONVIF only; RTSP-only users can ignore)
-- anthropic / openai (optional, required for LLM vision scene recognition)
+| Dependency | Purpose | Used By |
+|---|---|---|
+| opencv-python-headless | RTSP capture, image processing, video encoding | stream, motion, recordings, llm_vision |
+| numpy | Frame array operations | Everywhere |
+| ultralytics | YOLOv8 inference | detectors/person_yolo.py |
+| PyYAML | Config file parsing | config_loader.py |
+| onvif-zeep | ONVIF device discovery and control | onvif.py (optional) |
+| anthropic / openai | LLM vision API | detectors/llm_vision.py (optional) |
+
+Python >= 3.11 required. Runs on macOS and Linux.
 
 ## License
 

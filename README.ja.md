@@ -10,22 +10,41 @@
 
 > [🇨🇳 中文](README.md) &nbsp; [🇺🇸 English](README.en.md)
 
-セルフホスト型・軽量・完全ローカルの AI 監視 NVR システム。RTSP ダイレクト接続と ONVIF 自動検出に対応。YOLOv8 人体検出、内蔵 Web UI 再生、Home Assistant 統合を備えています。
+セルフホスト型・軽量・完全ローカルの AI 監視 NVR システム。  
+RTSP または ONVIF で IP カメラに接続し、モーション検出で AI 推論をトリガー、イベントを記録します — すべてローカル環境で動作し、クラウド依存は一切ありません。
 
 ![Web UI スクリーンショット](docs/webui.png)
 
-## 特徴
+## 仕組み
 
-- **マルチカメラ** — シングルプロセス・マルチスレッド、各カメラは独立して設定・動作
-- **デュアルプロトコル** — `rtsp://` ダイレクト接続または `onvif://` による RTSP アドレス自動検出
-- **モーションゲーティング** — フレーム差分検出による事前フィルタリングで AI 負荷を大幅削減
-- **AI 検出** — YOLOv8 人体検出を内蔵、カスタム検出器の拡張も可能
-- **イベント別録画** — イベントタイプ（motion / person / llm_*）ごとにスナップショット・ビデオクリップ保存を個別設定
-- **Web UI** — 内蔵 HTTP サーバー、カメラ・日付・時間帯でイベントをフィルタリング、タイムラインナビゲーション
-- **Home Assistant 連携** — イベント検出時に REST API で通知プッシュ
-- **Hook スクリプト** — イベント発生時に外部スクリプトを実行、柔軟な連携が可能
-- **自動再接続** — RTSP 切断からの自動復旧、24時間365日運用に対応
-- **完全ローカル** — すべての映像ストリーム、録画、AI 推論をローカルで実行、クラウド依存なし
+solo-surveillance はカメラを常時監視し、記録すべきイベントが発生したかを自動的に判断します。コアとなるのは**3ステージパイプライン**です：
+
+1. **ストリーム取り込み** — RTSP/ONVIF で各カメラに接続、フレームをデコード
+2. **モーションゲーティング** — フレーム差分検出で静止画をフィルタリング、実際に動きのあるフレームのみが AI へ
+3. **AI 検出** — YOLOv8 人体検出や LLM シーン理解をモーショントリガーで実行
+
+MotionGate がパフォーマンスの基盤です。AI 推論の前に静止フレームをフィルタリングすることで、実際の運用では AI 呼び出しを **90% 以上**削減します。
+
+各カメラは独立した `threading.Thread` で動作し、完全に独立した `RTSPReader`、`MotionGate`、`AIPipeline` インスタンスを持ちます — カメラワーカースレッド間で可変状態は共有されません。
+
+## 機能一覧
+
+| 機能 | 説明 | 設定キー |
+|---|---|---|
+| マルチカメラ | カメラごとに独立スレッド、独立した設定と実行 | `cameras[]` |
+| デュアルプロトコル | `rtsp://` 直接接続または `onvif://` 自動検出 | `stream_url` |
+| モーションゲーティング | フレーム差分検出、静止フレームを事前フィルタリング | `motion.*` |
+| YOLOv8 人体検出 | YOLO 内蔵、初回実行時にモデルを自動ダウンロード | `detectors.person` |
+| LLM ビジョンシーン | Anthropic/OpenAI API による高度なシーン理解 | `detectors.llm_vision` |
+| 領域クロッピング | 正規化 ROI 内のみ検出、フル解像度録画を保持 | `region` |
+| AI バッチ推論 | マルチフレームサンプリング、最大信頼度でマージ | `ai.frames` |
+| イベント録画 | イベントタイプごとにスナップショット (JPEG) とクリップ (MP4) | `recordings.*` |
+| タイムライン索引 | CSV ベースのイベントタイムライン（開始時刻、終了時刻、ファイルパス） | 自動管理 |
+| Web UI | 内蔵 HTTP サーバー、タイムラインナビゲーション、フィルタリング、再生 | `--http` フラグ |
+| Home Assistant | 重要な検出時に REST API イベントをプッシュ | `hass.*` |
+| Hook スクリプト | イベント発生時に外部コマンドを実行 | `hooks.*` |
+| 自動再接続 | RTSP 切断からの自動復旧、24時間365日運用に対応 | `RTSPReader` 内蔵 |
+| 完全ローカル | すべての推論、録画、再生をデバイス上で実行 | — |
 
 ## クイックスタート
 
@@ -118,7 +137,7 @@ hass:
 
 設定後、各イベント（`camera.motion`、`camera.person`、`camera.feeding` 等）は自動的に HA の `/api/events/{event_type}` に POST されます。
 
-> 詳細な設定は [docs/homeassistant.md](docs/homeassistant.md)（日本語版準備中）を参照。
+> 詳細な設定は [docs/homeassistant.md](docs/homeassistant.md) を参照。
 
 ---
 
@@ -148,8 +167,8 @@ llm:              # オプション：LLM API 接続設定
 ```
 
 > 全オプションと詳細コメントは `config.example.yaml` を参照。
-> 詳細な設定ガイドとベストプラクティスは [docs/configuration.md](docs/configuration.md)（日本語版準備中）を参照。
-> すぐ使えるシナリオ設定例は [docs/scenarios.md](docs/scenarios.md)（日本語版準備中）を参照。
+> 詳細な設定ガイドとベストプラクティスは [docs/configuration.md](docs/configuration.md) を参照。
+> すぐ使えるシナリオ設定例は [docs/scenarios.md](docs/scenarios.md) を参照。
 
 > **ONVIF URL 形式**: `onvif://username:password@host:port?profile=N`
 > - `profile`: メディアプロファイルインデックス、デフォルトは 0
@@ -243,24 +262,34 @@ class FireDetector(VisionDetector):
         return VisionResult(labels={"fire": 0.92})
 ```
 
-## アーキテクチャ
+## プロジェクト構造
 
-| モジュール | 責務 |
-|---|---|
-| `main.py` | エントリーポイント：argparse、スレッド管理、シグナルハンドリング |
-| `config_loader.py` | YAML 読み込み、deep_merge、環境変数展開 |
-| `stream.py` | RTSPReader — cv2.VideoCapture ラッパー、自動再接続 |
-| `onvif.py` | ONVIF デバイス接続、RTSP アドレス検出 |
-| `motion.py` | MotionGate — フレーム差分モーションゲーティング |
-| `region.py` | 検出領域クロッピング（正規化座標） |
-| `detectors/base.py` | 検出器の抽象基底クラスと結果データ型 |
-| `detectors/person_yolo.py` | YOLOv8 人体検出 |
-| `detectors/llm_vision.py` | LLM ビジョンシーン認識 |
-| `detectors/pipeline.py` | AIPipeline — 検出器の統括、しきい値ゲーティング |
-| `vision_burst.py` | マルチフレーム収集ヘルパー（collect_frames） |
-| `recordings.py` | スナップショット/クリップ録画 + timeline.csv 管理 |
-| `notifiers/` | Notifier 統一インターフェース（HA + Hook スクリプト） |
-| `http_server.py` | 内蔵 HTTP サーバー + Web UI |
+```
+solo-surveillance/
+├── config.example.yaml              # サンプル設定（全オプション）
+├── pyproject.toml                   # パッケージメタデータ、依存関係、CLI エントリポイント
+├── surveillance/                    # コアアプリケーションパッケージ
+│   ├── __main__.py                  # `python -m surveillance` エントリポイント
+│   ├── main.py                      # CLI パーサー、カメラスレッド管理
+│   ├── config_loader.py             # YAML 読み込み、deep_merge、${ENV_VAR} 展開
+│   ├── stream.py                    # RTSPReader — フレームキャプチャと自動再接続
+│   ├── motion.py                    # MotionGate — フレーム差分モーション検出
+│   ├── region.py                    # フレームを正規化 ROI にクロッピング
+│   ├── vision_burst.py              # マルチフレームサンプリングと結果マージ
+│   ├── recordings.py                # スナップショット/クリップ録画とタイムライン CSV
+│   ├── onvif.py                     # ONVIF 検出 → RTSP URL 解決
+│   ├── http_server.py               # 内蔵 Web UI と API サーバー
+│   ├── static/index.html            # シングルページ Web UI
+│   └── detectors/
+│       ├── base.py                  # 抽象 VisionDetector / AudioDetector
+│       ├── person_yolo.py           # YOLOv8 人体検出
+│       ├── llm_vision.py            # LLM API シーン分析
+│       └── pipeline.py              # AIPipeline — 全検出器を統括
+└── docs/                            # ドキュメント
+    ├── configuration.md             # 詳細設定ガイドとベストプラクティス
+    ├── scenarios.md                 # シナリオ設定例
+    └── homeassistant.md             # Home Assistant 連携手順
+```
 
 ### スレッドモデル
 
@@ -272,13 +301,16 @@ class FireDetector(VisionDetector):
 
 ## 依存関係
 
-- Python >= 3.11
-- opencv-python-headless（>= 4.8.0）
-- numpy（>= 1.24.0）
-- PyYAML（>= 6.0）
-- ultralytics（>= 8.0.0）
-- onvif-zeep（>= 0.2.0、ONVIF のみ必要；RTSP のみのユーザーは無視可）
-- anthropic / openai（オプション、LLM ビジョンシーン認識に必要）
+| 依存パッケージ | 用途 | 使用モジュール |
+|---|---|---|
+| opencv-python-headless | RTSP キャプチャ、画像処理、ビデオエンコード | stream, motion, recordings, llm_vision |
+| numpy | フレーム配列演算 | 全体 |
+| ultralytics | YOLOv8 推論 | detectors/person_yolo.py |
+| PyYAML | 設定ファイル解析 | config_loader.py |
+| onvif-zeep | ONVIF デバイス検出と制御 | onvif.py（オプション） |
+| anthropic / openai | LLM ビジョン API | detectors/llm_vision.py（オプション） |
+
+Python >= 3.11 が必要。macOS および Linux で動作します。
 
 ## ライセンス
 

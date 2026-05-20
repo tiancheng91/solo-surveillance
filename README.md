@@ -10,22 +10,41 @@
 
 > [🇺🇸 English](README.en.md) &nbsp; [🇯🇵 日本語](README.ja.md)
 
-自托管、轻量、纯本地运行的 AI 监控 NVR 系统。支持 RTSP 直连与 ONVIF 自动发现，YOLOv8 人体检测，内置 Web 回放界面与 Home Assistant 集成。
+自托管、轻量、纯本地运行的 AI 监控 NVR 系统。  
+通过 RTSP 或 ONVIF 连接 IP 摄像头，利用运动检测触发 AI 推理，记录事件——所有操作均在本地运行，零云依赖。
 
 ![Web UI 截图](docs/webui.png)
 
-## 特性
+## 工作原理
 
-- **多路相机** — 单进程多线程，每路独立配置，独立运行
-- **双协议接入** — `rtsp://` 直连或 `onvif://` 自动发现 RTSP 地址
-- **运动门控** — 帧差检测预过滤，无效帧不送 AI，大幅降低算力消耗
-- **AI 检测** — 内置 YOLOv8 人体检测，支持自定义检测器扩展
-- **场景化录制** — 按事件类型（motion / person）独立配置是否保存截图或视频片段
-- **Web UI** — 内置 HTTP 服务器，按相机/日期/时间段检索事件回放，带时间轴导航
-- **Home Assistant 集成** — 检测到事件时通过 REST API 推送通知
-- **Hook 脚本** — 事件触发时调用外部脚本，灵活联动其他系统
-- **自动重连** — RTSP 断流自动恢复，适合 7x24 运行
-- **纯本地运行** — 所有视频流、录像、AI 推理均在本地完成，无云依赖
+solo-surveillance 持续监控摄像头，自动判断何时发生值得记录的事件。核心采用**三阶段流水线**：
+
+1. **流接入** — 通过 RTSP/ONVIF 连接每路摄像头，解码视频帧
+2. **运动门控** — 帧差检测过滤静态画面；只有真正出现运动的帧才会进入 AI
+3. **AI 检测** — YOLOv8 人体检测和/或 LLM 场景理解在运动触发的帧上运行
+
+MotionGate 是系统的性能基石。通过在 AI 推理前过滤掉静态帧，实际部署中通常可减少 **90% 以上**的 AI 调用次数。
+
+每路摄像头运行在各自独立的 `threading.Thread` 中，拥有完全独立的 `RTSPReader`、`MotionGate` 和 `AIPipeline` 实例——摄像头工作线程间无共享可变状态。
+
+## 功能特性
+
+| 功能 | 描述 | 配置键 |
+|---|---|---|
+| 多路相机 | 每路独立线程，配置与运行时相互独立 | `cameras[]` |
+| 双协议接入 | `rtsp://` 直连或 `onvif://` 自动发现 RTSP 地址 | `stream_url` |
+| 运动门控 | 帧差检测，预过滤静态帧 | `motion.*` |
+| YOLOv8 人体检测 | 内置 YOLO，首次运行自动下载模型 | `detectors.person` |
+| LLM 视觉场景 | 使用 Anthropic/OpenAI API 进行复杂场景理解 | `detectors.llm_vision` |
+| 区域裁剪 | 仅在归一化 ROI 内检测，保留全分辨率录制 | `region` |
+| AI 批量推理 | 多帧采样，按最大置信度合并结果 | `ai.frames` |
+| 事件录制 | 按事件类型生成截图 (JPEG) 和视频片段 (MP4) | `recordings.*` |
+| 时间线索引 | 基于 CSV 的事件索引，包含起止时间和文件路径 | 自动管理 |
+| Web UI | 内置 HTTP 服务器，支持时间线导航、过滤与回放 | `--http` 参数 |
+| Home Assistant | 检测到重大事件时推送 REST API 事件 | `hass.*` |
+| Hook 脚本 | 事件触发时执行外部命令 | `hooks.*` |
+| 自动重连 | RTSP 断流自动恢复，适合 7x24 运行 | 内置于 `RTSPReader` |
+| 纯本地运行 | 所有推理、录制和回放均在设备端完成 | — |
 
 ## 快速开始
 
@@ -150,8 +169,8 @@ llm:              # 可选：LLM API 连接配置
 > 完整配置见 `config.example.yaml`，涵盖所有选项及详细注释。
 > 详细配置说明与最佳实践见 [docs/configuration.md](docs/configuration.md)，场景配置示例见 [docs/scenarios.md](docs/scenarios.md)。
 
-> **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`  
-> - `profile`：media profile 索引，默认 0  
+> **ONVIF URL 格式**：`onvif://username:password@host:port?profile=N`
+> - `profile`：media profile 索引，默认 0
 > - 支持 `${ENV_VAR}` 避免明文密码：`onvif://admin:${CAM_PASSWORD}@192.168.1.100`
 
 > **提示**：`config.yaml` 建议加入 `.gitignore`，避免泄露摄像头地址和凭据。
@@ -242,24 +261,34 @@ class FireDetector(VisionDetector):
         return VisionResult(labels={"fire": 0.92})
 ```
 
-## 架构
+## 项目结构
 
-| 模块 | 职责 |
-|---|---|
-| `main.py` | 入口：argparse、线程管理、信号处理 |
-| `config_loader.py` | YAML 加载、deep_merge、环境变量展开 |
-| `stream.py` | RTSPReader — cv2.VideoCapture 封装，自动重连 |
-| `onvif.py` | ONVIF 设备连接、RTSP 地址发现 |
-| `motion.py` | MotionGate — 帧差运动门控 |
-| `region.py` | 检测区域裁剪（归一化坐标） |
-| `detectors/base.py` | 检测器抽象基类与结果数据结构 |
-| `detectors/person_yolo.py` | YOLOv8 人体检测 |
-| `detectors/llm_vision.py` | LLM 视觉场景识别 |
-| `detectors/pipeline.py` | AIPipeline — 调度检测器，阈值门控 |
-| `vision_burst.py` | 多帧采集辅助（collect_frames） |
-| `recordings.py` | 截图/视频录制 + timeline.csv 管理 |
-| `notifiers/` | Notifier 统一接口（HA + Hook 脚本） |
-| `http_server.py` | 内置 HTTP 服务器 + Web UI |
+```
+solo-surveillance/
+├── config.example.yaml              # 示例配置（含全部选项）
+├── pyproject.toml                   # 包元数据、依赖、CLI 入口点
+├── surveillance/                    # 核心应用包
+│   ├── __main__.py                  # `python -m surveillance` 入口
+│   ├── main.py                      # CLI 解析、线程编排
+│   ├── config_loader.py             # YAML 加载、deep_merge、${ENV_VAR} 展开
+│   ├── stream.py                    # RTSPReader — 帧捕获与自动重连
+│   ├── motion.py                    # MotionGate — 帧差运动检测
+│   ├── region.py                    # 帧裁剪至归一化 ROI
+│   ├── vision_burst.py              # 多帧采样与结果合并
+│   ├── recordings.py                # 截图/视频录制与 timeline CSV
+│   ├── onvif.py                     # ONVIF 发现 → RTSP URL 解析
+│   ├── http_server.py               # 内置 Web UI 与 API 服务器
+│   ├── static/index.html            # 单页 Web UI
+│   └── detectors/
+│       ├── base.py                  # 抽象 VisionDetector / AudioDetector
+│       ├── person_yolo.py           # YOLOv8 人体检测
+│       ├── llm_vision.py            # LLM API 场景分析
+│       └── pipeline.py              # AIPipeline — 编排所有检测器
+└── docs/                            # 文档
+    ├── configuration.md             # 详细配置指南与最佳实践
+    ├── scenarios.md                 # 场景配置示例
+    └── homeassistant.md             # Home Assistant 集成详情
+```
 
 ### 线程模型
 
@@ -271,13 +300,16 @@ class FireDetector(VisionDetector):
 
 ## 依赖
 
-- Python >= 3.11
-- opencv-python-headless（>= 4.8.0）
-- numpy（>= 1.24.0）
-- PyYAML（>= 6.0）
-- ultralytics（>= 8.0.0）
-- onvif-zeep（>= 0.2.0，仅 ONVIF 需要；纯 RTSP 用户可忽略）
-- anthropic / openai（可选，LLM 视觉场景识别需要）
+| 依赖 | 用途 | 使用模块 |
+|---|---|---|
+| opencv-python-headless | RTSP 捕获、图像处理、视频编码 | stream, motion, recordings, llm_vision |
+| numpy | 帧数组运算 | 全局使用 |
+| ultralytics | YOLOv8 推理 | detectors/person_yolo.py |
+| PyYAML | 配置文件解析 | config_loader.py |
+| onvif-zeep | ONVIF 设备发现与控制 | onvif.py（可选） |
+| anthropic / openai | LLM 视觉 API | detectors/llm_vision.py（可选） |
+
+要求 Python >= 3.11，支持 macOS 和 Linux。
 
 ## License
 
