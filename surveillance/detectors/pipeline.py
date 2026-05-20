@@ -109,13 +109,23 @@ class AIPipeline:
         extra: dict | None = None,
         skip: set[str] | None = None,
     ) -> PipelineResult:
+        return self.run_batch([frame_bgr], camera_id, rtsp_url, extra, skip)
+
+    def run_batch(
+        self,
+        frames: list[np.ndarray],
+        camera_id: str,
+        rtsp_url: str | None = None,
+        extra: dict | None = None,
+        skip: set[str] | None = None,
+    ) -> PipelineResult:
         vctx = VisionContext(camera_id=camera_id, extra=extra or {})
         vision_out: dict[str, VisionResult] = {}
         for d in self._vision:
             if skip and d.name in skip:
                 continue
             try:
-                vision_out[d.name] = d.analyze(frame_bgr, vctx)
+                vision_out[d.name] = d.analyze_batch(frames, vctx)
             except Exception:
                 log.exception("视觉检测器失败: %s", d.name)
 

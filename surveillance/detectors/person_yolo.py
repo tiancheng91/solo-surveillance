@@ -30,6 +30,13 @@ class PersonYoloDetector(VisionDetector):
         self._device = device
 
     def analyze(self, frame_bgr: np.ndarray, ctx: VisionContext | None = None) -> VisionResult:
+        return self.analyze_batch([frame_bgr], ctx)
+
+    def analyze_batch(
+        self,
+        frames: list[np.ndarray],
+        ctx: VisionContext | None = None,
+    ) -> VisionResult:
         ctx = ctx or VisionContext()
         kwargs: dict[str, Any] = {
             "conf": self._conf,
@@ -39,23 +46,27 @@ class PersonYoloDetector(VisionDetector):
         if self._device:
             kwargs["device"] = self._device
 
-        results = self._model.predict(frame_bgr, **kwargs)
         best_person = 0.0
-        boxes = 0
-        if results and results[0].boxes is not None and len(results[0].boxes):
-            boxes = len(results[0].boxes)
-            best_person = float(results[0].boxes.conf.max().item())
+        total_boxes = 0
+        for frame_bgr in frames:
+            results = self._model.predict(frame_bgr, **kwargs)
+            if results and results[0].boxes is not None and len(results[0].boxes):
+                total_boxes = max(total_boxes, len(results[0].boxes))
+                conf = float(results[0].boxes.conf.max().item())
+                if conf > best_person:
+                    best_person = conf
 
-        labels = {"person": min(1.0, best_person) if boxes else 0.0}
+        labels = {"person": min(1.0, best_person) if total_boxes else 0.0}
         log.debug(
-            "person_yolo: camera_id=%s boxes=%s person_conf=%.4f",
+            "person_yolo: camera_id=%s frames=%d boxes=%s person_conf=%.4f",
             ctx.camera_id,
-            boxes,
+            len(frames),
+            total_boxes,
             labels["person"],
         )
         return VisionResult(
             labels=labels,
-            raw={"boxes": boxes, "camera_id": ctx.camera_id},
+            raw={"boxes": total_boxes, "frames": len(frames), "camera_id": ctx.camera_id},
         )
 
     def close(self) -> None:

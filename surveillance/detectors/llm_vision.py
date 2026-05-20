@@ -9,7 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from surveillance.detectors.base import VisionDetector, VisionResult
+from surveillance.detectors.base import VisionContext, VisionDetector, VisionResult
 
 log = logging.getLogger(__name__)
 
@@ -46,9 +46,10 @@ class LLMVisionDetector(VisionDetector):
           llm_vision:
             enabled: true
             conf: 0.6
-            frames: 1
             scenes:
               feeding: "婴儿正在吃奶"
+
+    ``analyze_batch()`` sends all frames in a single API call (multi-image).
     """
 
     name = "llm_vision"
@@ -61,7 +62,6 @@ class LLMVisionDetector(VisionDetector):
         self.base_url = str(llm_cfg.get("base_url", "")).strip() or None
         self.conf_threshold = float(vision_cfg.get("conf", 0.6))
         self.cooldown_sec = float(llm_cfg.get("cooldown_sec", 60.0))
-        self.frames = int(vision_cfg.get("frames", 1))
         self.resize_width = int(llm_cfg.get("resize_width", 640))
         self.system_prompt = str(vision_cfg.get("system_prompt", ""))
         self.scenes: dict[str, str] = vision_cfg.get("scenes", {}) or {}
@@ -81,10 +81,13 @@ class LLMVisionDetector(VisionDetector):
 
     # ── public API ──────────────────────────────────────────────
 
-    def analyze(
+    def analyze(self, frame_bgr: np.ndarray, ctx=None) -> VisionResult:
+        return self.analyze_batch([frame_bgr], ctx)
+
+    def analyze_batch(
         self,
-        frame_bgr: np.ndarray,
-        ctx=None,
+        frames: list[np.ndarray],
+        ctx: VisionContext | None = None,
     ) -> VisionResult:
         if not self.enabled or not self.scenes or not self.api_key:
             return VisionResult(labels={})
@@ -95,10 +98,6 @@ class LLMVisionDetector(VisionDetector):
                       now - self._last_call, self.cooldown_sec)
             return VisionResult(labels={})
         self._last_call = now
-
-        frames = [frame_bgr]
-        if self.frames > 1 and ctx and ctx.extra.get("llm_extra_frames"):
-            frames.extend(ctx.extra["llm_extra_frames"])
 
         try:
             b64_frames = [self._encode_frame(f) for f in frames]

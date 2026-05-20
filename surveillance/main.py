@@ -18,12 +18,7 @@ from surveillance.notifiers.hass import HassNotifier
 from surveillance.notifiers.hooks import HooksNotifier
 from surveillance.http_server import start_http_server
 from surveillance.region import crop_to_region
-from surveillance.vision_burst import (
-    VisionBurstConfig,
-    merge_pipeline_results,
-    pick_best_snapshot_frame,
-    sample_vision_burst,
-)
+from surveillance.vision_burst import collect_frames
 from surveillance.onvif import OnvifUrlResolver, parse_onvif_url
 
 log = logging.getLogger(__name__)
@@ -34,8 +29,18 @@ def _motion_cfg(eff: dict[str, Any]) -> MotionConfig:
 
 
 def _ai_cooldown_sec(eff: dict[str, Any]) -> float:
-    m = eff.get("motion") or {}
-    return float(m.get("ai_cooldown_sec", 2.0))
+    ai = eff.get("ai") or {}
+    return float(ai.get("cooldown_sec", 10.0))
+
+
+def _ai_frame_count(eff: dict[str, Any]) -> int:
+    ai = eff.get("ai") or {}
+    return int(ai.get("frames", 1))
+
+
+def _ai_frame_interval(eff: dict[str, Any]) -> float:
+    ai = eff.get("ai") or {}
+    return float(ai.get("interval_sec", 0.5))
 
 
 def _recordings_mgr(eff: dict[str, Any], cam_id: str) -> RecordingManager:
@@ -134,56 +139,24 @@ def camera_worker(
                 log.debug("[%s] 无启用视觉检测器，跳过推理", cam_id)
                 continue
 
-            burst_cfg = _vision_burst_cfg(eff)
-            if burst_cfg.enabled:
-                log.debug(
-                    "[%s] detector: vision_burst window=%.2fs interval=%.2fs",
-                    cam_id,
-                    burst_cfg.window_sec,
-                    burst_cfg.interval_sec,
-                )
-                samples = sample_vision_burst(
-                    stream, pipeline, cam_id, stop, burst_cfg, frame, region
-                )
-                if not samples:
-                    log.debug("[%s] detector: burst 无采样帧", cam_id)
-                    continue
-                result = merge_pipeline_results([pr for _, pr in samples])
-                snapshot_bgr = pick_best_snapshot_frame(samples)
-                burst_meta = {
-                    "enabled": True,
-                    "frames": len(samples),
-                    "window_sec": burst_cfg.window_sec,
-                    "interval_sec": burst_cfg.interval_sec,
-                }
-            else:
-                log.debug("[%s] detector: 单帧推理", cam_id)
-                # 多帧 LLM：运动触发后继续采集数帧，间隔 >0.5 秒
-                llm_extra = None
-                llm_cfg = eff.get("detectors", {}).get("llm_vision", {})
-                if isinstance(llm_cfg, dict) and llm_cfg.get("enabled") and int(llm_cfg.get("frames", 1)) > 1:
-                    n = int(llm_cfg["frames"])
-                    llm_extra = []
-                    for _ in range(n - 1):
-                        fr = stream.read_frame()
-                        if fr is None:
-                            time.sleep(0.05)
-                            continue
-                        llm_extra.append(fr)
-                        if _ < n - 2:
-                            time.sleep(max(0.5, motion_cfg.check_interval_sec))
-                extra = {"llm_extra_frames": llm_extra} if llm_extra else None
-                result = pipeline.run(frame, camera_id=cam_id, rtsp_url=None, extra=extra)
-                snapshot_bgr = raw_frame.copy()
-                burst_meta = {"enabled": False, "frames": 1}
+            # 采集帧 → 批量推理（统一路径，不再区分 burst / 单帧）
+            ai_count = _ai_frame_count(eff)
+            ai_interval = _ai_frame_interval(eff)
+            ai_frames = collect_frames(stream, stop, ai_count, ai_interval, region, raw_frame, frame)
+            if not ai_frames:
+                log.debug("[%s] 未采集到帧，跳过", cam_id)
+                continue
+
+            cropped_frames = [f.cropped for f in ai_frames]
+            result = pipeline.run_batch(cropped_frames, camera_id=cam_id, rtsp_url=None)
+            snapshot_bgr = ai_frames[0].raw.copy()
 
             flat_labels = _flat_vision_labels(result)
             sig = result.significant(pipeline.label_thresholds)
             log.debug(
-                "[%s] detector 完成 burst=%s frames=%s labels=%s significant=%s thresholds=%s",
+                "[%s] AI 完成 frames=%d labels=%s significant=%s thresholds=%s",
                 cam_id,
-                burst_meta.get("enabled"),
-                burst_meta.get("frames"),
+                len(ai_frames),
                 flat_labels,
                 sig,
                 pipeline.label_thresholds,
