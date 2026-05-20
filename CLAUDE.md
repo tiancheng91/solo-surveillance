@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Version bump**: Before tagging a release, update `version` in `pyproject.toml` to match the tag. PyPI rejects duplicate version uploads.
 - **Config file**: `config.yaml` is private (contains credentials). Never commit it or expose its contents outside the session.
 - **Sensitive info**: Never hardcode API keys/tokens in code or example configs. Use `${ENV_VAR}` placeholders.
+- **CHANGELOG language**: All CHANGELOG entries and GitHub Release notes must be written in English for consistency.
 
 ## Commands
 
