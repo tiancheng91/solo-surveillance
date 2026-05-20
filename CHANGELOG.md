@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 (2026-05-13)
+
+### Features
+
+- Batch inference interface: `VisionDetector.analyze_batch(frames)` replaces single-frame API; YOLO multi-frame merge, LLM multi-image API call unified
+- Unified AI frame collection: `ai.frames` / `ai.interval_sec` replaces `vision_burst` + `llm_vision.frames`
+- LLM config split: global `llm` section (connection) + `detectors.llm_vision` (scenes), per-camera scene override
+- `llm_` prefix on LLM scene event types to avoid collision with YOLO labels
+- Image resize before LLM API call (`resize_width`, default 640) for cost efficiency
+- Dynamic event type colors in Web UI (hash-based HSL)
+- Config docs: YOLO model selection guide, motion tuning table, 3 preset scenarios
+
+### Refactor
+
+- Notifier interface: `HassNotifier` + `HooksNotifier` under `surveillance/notifiers/` with common `Notifier` base
+- `vision_burst.py` simplified to `collect_frames()` utility
+
+### Project
+
+- CI workflow targets `main` branch
+- `docs/configuration.md`: best practices for YOLO models, motion tuning, LLM scenes
+- `docs/scenarios.md`: ready-to-use configs for motion-only, person detection, LLM baby room
+
 ## 0.2.0 (2026-05-12)
 
 ### Features

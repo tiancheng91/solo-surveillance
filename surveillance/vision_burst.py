@@ -7,11 +7,16 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from surveillance.detectors.base import VisionResult
-from surveillance.detectors.pipeline import AIPipeline, PipelineResult
 from surveillance.region import crop_to_region
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class FrameData:
+    """A single frame ready for inference."""
+    raw: np.ndarray
+    cropped: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -37,90 +42,46 @@ class VisionBurstConfig:
         )
 
 
-def merge_pipeline_results(results: list[PipelineResult]) -> PipelineResult:
-    """多帧结果按检测器名合并标签（同一 key 取最大置信度）。"""
-    acc: dict[str, dict[str, float]] = {}
-    order: list[str] = []
-    n = len(results)
-    for pr in results:
-        for name, vr in pr.vision.items():
-            if name not in acc:
-                acc[name] = dict(vr.labels)
-                order.append(name)
-            else:
-                for k, v in vr.labels.items():
-                    acc[name][k] = max(float(acc[name].get(k, 0.0)), float(v))
-    vision = {
-        name: VisionResult(
-            labels=acc[name],
-            raw={"burst_merged": True, "burst_frames": n},
-        )
-        for name in order
-    }
-    return PipelineResult(vision=vision, audio={})
+def collect_frames(
+    stream,
+    stop: threading.Event,
+    count: int,
+    interval: float,
+    region: tuple[float, float, float, float] | None,
+    first_raw: np.ndarray | None = None,
+    first_cropped: np.ndarray | None = None,
+) -> list[FrameData]:
+    """Collect *count* frames from stream, starting with *first_raw* if given."""
+    frames: list[FrameData] = []
+    for i in range(count):
+        if i == 0 and first_raw is not None:
+            raw = first_raw
+            crop = first_cropped if first_cropped is not None else raw
+        else:
+            fr = stream.read_frame()
+            if fr is None:
+                time.sleep(0.05)
+                continue
+            crop = crop_to_region(fr, region) if region else fr
+            raw = fr
+        frames.append(FrameData(raw=raw, cropped=crop))
+        if i < count - 1:
+            time.sleep(interval)
+
+    if count > 1:
+        log.debug("collect_frames: %d frames interval=%.2f", len(frames), interval)
+    return frames
 
 
-def _frame_score(pr: PipelineResult) -> float:
-    s = 0.0
-    for vr in pr.vision.values():
-        if vr.labels:
-            s = max(s, max(float(x) for x in vr.labels.values()))
-    return s
-
-
-def pick_best_snapshot_frame(samples: list[tuple[np.ndarray, PipelineResult]]) -> np.ndarray:
-    """选置信度最高的一帧用于截图（BGR）。"""
-    if not samples:
-        raise ValueError("empty burst")
-    best_fr = samples[0][0]
-    best_sc = _frame_score(samples[0][1])
-    for fr, pr in samples[1:]:
-        sc = _frame_score(pr)
+def pick_best_frame(frames: list[FrameData], scores: list[dict[str, float]]) -> np.ndarray:
+    """Return the raw frame with highest max confidence score."""
+    if not frames:
+        raise ValueError("empty frames")
+    best_idx = 0
+    best_sc = max(scores[0].values()) if scores[0] else 0.0
+    for i in range(1, len(frames)):
+        sc = max(scores[i].values()) if scores[i] else 0.0
         if sc > best_sc:
             best_sc = sc
-            best_fr = fr
-    return best_fr.copy()
-
-
-def sample_vision_burst(
-    stream,
-    pipeline: AIPipeline,
-    camera_id: str,
-    stop: threading.Event,
-    cfg: VisionBurstConfig,
-    first_frame: np.ndarray,
-    region=None,
-) -> list[tuple[np.ndarray, PipelineResult]]:
-    """
-    在 [t0, t0+window_sec] 内按 interval 采样：首帧用 first_frame，其后 read_frame。
-    """
-    samples: list[tuple[np.ndarray, PipelineResult]] = []
-    t0 = time.monotonic()
-    end = t0 + cfg.window_sec
-
-    infer_frame = crop_to_region(first_frame, region)
-    r0 = pipeline.run(infer_frame, camera_id=camera_id, rtsp_url=None)
-    samples.append((first_frame.copy(), r0))
-
-    next_t = t0 + cfg.interval_sec
-    while next_t <= end + 1e-9:
-        if stop.is_set():
-            break
-        while True:
-            if stop.is_set():
-                return samples
-            rem = next_t - time.monotonic()
-            if rem <= 0:
-                break
-            time.sleep(min(0.05, rem))
-
-        fr = stream.read_frame()
-        if fr is None:
-            continue
-        infer_fr = crop_to_region(fr, region)
-        r = pipeline.run(infer_fr, camera_id=camera_id, rtsp_url=None)
-        samples.append((fr.copy(), r))
-        next_t += cfg.interval_sec
-
-    log.debug("vision_burst: %s 帧 window=%.2fs interval=%.2fs", len(samples), cfg.window_sec, cfg.interval_sec)
-    return samples
+            best_idx = i
+    return frames[best_idx].raw.copy()

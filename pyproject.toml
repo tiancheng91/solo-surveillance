@@ -1,6 +1,6 @@
 [project]
 name = "solo-surveillance"
-version = "0.1.0"
+version = "0.3.0"
 description = "自托管、轻量、纯本地运行的 AI 监控 NVR 系统"
 requires-python = ">=3.11"
 license = { text = "MIT" }

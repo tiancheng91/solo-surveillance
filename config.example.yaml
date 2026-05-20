@@ -1,64 +1,71 @@
 # 复制为 config.yaml 后按需修改（config.yaml 建议加入 .gitignore）
+# 详细配置说明与最佳实践见 docs/configuration.md
 
-# 可选：多路相机共用的默认值，单路里未写的项会回退到这里
+# ─── LLM 连接配置（全局，所有 LLM 功能共用）───
+# connection 放在这里，detectors 里只声明"检测什么"
+# llm:
+#   provider: "anthropic"                # "anthropic" 或 "openai"
+#   model: "claude-sonnet-4-20250514"
+#   api_key: "${ANTHROPIC_API_KEY}"       # 建议用环境变量
+#   base_url: ""                           # 自定义接入点（可选）
+#   cooldown_sec: 60                       # API 调用冷却（秒）
+#   resize_width: 640                      # 缩放长边（像素），0=不缩放
+
 defaults:
+  # ─── 运动检测 ───
   motion:
-    resize_width: 320
-    blur_ksize: 7
-    diff_threshold: 28
-    min_change_ratio: 0.012
-    ai_cooldown_sec: 10.0
-    # check_interval_sec: 0.2     # 运动检测采样间隔(秒)；0=每帧检测，>0 通过 grab() 跳过中间帧降低 CPU
-  # motion 触发后短窗口内多帧推理，标签取各帧最大置信度（设 enabled: true 启用）
-  vision_burst:
-    enabled: false
-    window_sec: 1.2
-    interval_sec: 0.6
-  # 场景化录制：按事件类型独立配置截图/视频片段；文件存 data/{cameraId}/{date}/ 下
+    resize_width: 320        # 帧缩放到此宽度再比对，值越小越快
+    blur_ksize: 7            # 高斯模糊核大小（奇数），越大对噪点越不敏感
+    diff_threshold: 28       # 像素差值阈值（0-255），越大越不容易触发
+    min_change_ratio: 0.012  # 变化像素占比（1.2%）超过此值判定为运动
+    check_interval_sec: 0.2  # 采样间隔（秒）；0=每帧，>0 跳过中间帧降低 CPU
+
+  # ─── AI 推理（运动触发后采集多帧批量推理）───
+  ai:
+    frames: 3                # 采集帧数（1=单帧，>1=YOLO/LLM 均受益）
+    interval_sec: 0.5        # 帧间隔（秒）
+    cooldown_sec: 10.0       # 冷却时间，防止频繁检测
+
+  # ─── 录制配置 ───
   recordings:
-    base_dir: "data"
-    motion:                    # 运动触发（AI 检测前）
+    base_dir: "data"          # 录制文件根目录
+    motion:                   # 运动触发（AI 检测前）
       snapshot: false
       clip: false
       clip_seconds: 5
-    person:                    # AI 检测到人
+    person:                   # YOLO 检测到人
       snapshot: true
       clip: false
       clip_seconds: 10
+    # llm_feeding:            # LLM 场景加 llm_ 前缀
+    #   snapshot: true
+    #   clip: true
+    #   clip_seconds: 15
+
+  # ─── 检测器 ───
   detectors:
-    person:
+    person:                   # YOLOv8 人体检测
       enabled: true
-      model: "yolov8n.pt"
-      conf: 0.35
-      classes: [0]
+      model: "yolov8n.pt"    # n/s/m/l/x 依次更准更慢
+      conf: 0.35              # 置信度阈值
+      classes: [0]            # COCO 类别 ID，[0]=人
     # ── LLM 视觉场景识别（可选）──
-    # 调用 LLM API 分析画面内容，检测复杂场景（喂奶、哭闹、换尿布等）
     # llm_vision:
     #   enabled: true
-    #   provider: "anthropic"               # "anthropic" 或 "openai"
-    #   model: "claude-sonnet-4-20250514"
-    #   api_key: "${ANTHROPIC_API_KEY}"      # 建议用环境变量
-    #   base_url: ""                          # 自定义接入点（可选，如 API 代理地址）
-    #   conf: 0.6                            # 场景置信度阈值
-    #   cooldown_sec: 60                     # API 调用冷却（秒）
-    #   frames: 2                            # 传入帧数（>1 可提升准确率，帧间隔 >0.5s）
-    #   system_prompt: "你是一个婴儿房监控助手。请分析画面中的场景。"
+    #   conf: 0.6
     #   scenes:
     #     feeding: "婴儿正在吃奶（奶瓶或母乳喂养）"
     #     crying: "婴儿哭闹、表情痛苦"
     #     changing: "正在换尿布"
+
   # 可选：检测区域（归一化坐标 x1,y1,x2,y2，不写=全帧）
-  # 画面裁剪后做 motion 和 AI 检测，截图/视频仍保存原始全尺寸
   # region: [0, 0, 1, 1]
 
 cameras:
   - id: xiaomi1
     enabled: true
-    # RTSP 直连
     stream_url: "rtsp://127.0.0.1:8554/xiaomi1"
-    # 可选：检测区域（不写则全帧）
     # region: [0.1, 0.2, 0.9, 0.95]
-    # 本路可选覆盖 defaults
     # motion:
     #   min_change_ratio: 0.02
     detectors:
@@ -72,12 +79,18 @@ cameras:
 
   # - id: front_door
   #   enabled: false
-  #   # ONVIF 自动发现（支持 ${ENV_VAR}）
   #   stream_url: "onvif://admin:${CAM_PASSWORD}@192.168.1.100:80?profile=0"
-  #   detectors:
-  #     person:
-  #       enabled: true
 
   # - id: cam2
   #   enabled: false
   #   stream_url: "rtsp://..."
+
+# ─── Home Assistant 集成（可选）───
+# hass:
+#   enabled: true
+#   url: "http://homeassistant:8123"
+#   token: "${HASS_TOKEN}"
+
+# ─── Hook 脚本（可选）───
+# hooks:
+#   - command: scripts/event_logger.sh

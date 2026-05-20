@@ -104,9 +104,15 @@ const obs=new IntersectionObserver((entries)=>{
 },{rootMargin:"400px"});
 
 function typeClass(t){
-  if(t==="person") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if(t==="motion") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  return "bg-gray-50 text-gray-600 ring-1 ring-gray-200";
+  const COLORS={
+    person:["bg-rose-50","text-rose-700","ring-1","ring-rose-200"],
+    motion:["bg-amber-50","text-amber-700","ring-1","ring-amber-200"],
+  };
+  if(COLORS[t]) return COLORS[t].join(" ");
+  let h=0;
+  for(let i=0;i<t.length;i++) h=((h<<5)-h)+t.charCodeAt(i), h|=0;
+  const hue=((h%360)+360)%360;
+  return "bg-[hsl("+hue+",70%,95%)] text-[hsl("+hue+",60%,35%)] ring-1 ring-[hsl("+hue+",50%,85%)]";
 }
 function fmtTime(iso){
   const d=new Date(iso);

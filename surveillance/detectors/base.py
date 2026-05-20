@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 
 @dataclass
 class VisionContext:
@@ -26,9 +28,17 @@ class VisionDetector(ABC):
 
     name: str = "vision"
 
-    @abstractmethod
     def analyze(self, frame_bgr, ctx: VisionContext | None = None) -> VisionResult:
-        """frame_bgr: numpy BGR uint8."""
+        """单帧检测（默认走 batch）。"""
+        return self.analyze_batch([frame_bgr], ctx)
+
+    @abstractmethod
+    def analyze_batch(
+        self,
+        frames: list[np.ndarray],
+        ctx: VisionContext | None = None,
+    ) -> VisionResult:
+        """多帧检测，子类必须实现。鼓励支持批量推理。"""
 
     def close(self) -> None:
         pass

@@ -69,7 +69,7 @@ class AIPipeline:
         return bool(self._vision)
 
     @staticmethod
-    def from_camera_detectors(detectors_cfg: dict | None) -> AIPipeline:
+    def from_camera_detectors(detectors_cfg: dict | None, llm_cfg: dict | None = None) -> AIPipeline:
         """仅根据合并后的 detectors 段构建（每路相机独立）。"""
         vision: list[VisionDetector] = []
         audio: list[AudioDetector] = []
@@ -90,13 +90,14 @@ class AIPipeline:
 
         # LLM Vision detector
         raw_llm = dc.get("llm_vision")
-        if isinstance(raw_llm, dict) and raw_llm.get("enabled", False):
+        if isinstance(raw_llm, dict):
             from surveillance.detectors.llm_vision import LLMVisionDetector
 
-            llm = LLMVisionDetector(raw_llm)
-            vision.append(llm)
-            for scene in (raw_llm.get("scenes") or {}):
-                thresholds[scene] = float(raw_llm.get("conf", 0.6))
+            llm = LLMVisionDetector.from_config(llm_cfg, raw_llm)
+            if llm:
+                vision.append(llm)
+                for scene in (raw_llm.get("scenes") or {}):
+                    thresholds[f"llm_{scene}"] = float(raw_llm.get("conf", 0.6))
 
         return AIPipeline(vision, audio, label_thresholds=thresholds)
 
@@ -106,12 +107,25 @@ class AIPipeline:
         camera_id: str,
         rtsp_url: str | None = None,
         extra: dict | None = None,
+        skip: set[str] | None = None,
+    ) -> PipelineResult:
+        return self.run_batch([frame_bgr], camera_id, rtsp_url, extra, skip)
+
+    def run_batch(
+        self,
+        frames: list[np.ndarray],
+        camera_id: str,
+        rtsp_url: str | None = None,
+        extra: dict | None = None,
+        skip: set[str] | None = None,
     ) -> PipelineResult:
         vctx = VisionContext(camera_id=camera_id, extra=extra or {})
         vision_out: dict[str, VisionResult] = {}
         for d in self._vision:
+            if skip and d.name in skip:
+                continue
             try:
-                vision_out[d.name] = d.analyze(frame_bgr, vctx)
+                vision_out[d.name] = d.analyze_batch(frames, vctx)
             except Exception:
                 log.exception("视觉检测器失败: %s", d.name)
 

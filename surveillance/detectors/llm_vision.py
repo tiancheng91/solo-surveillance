@@ -9,7 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from surveillance.detectors.base import VisionDetector, VisionResult
+from surveillance.detectors.base import VisionContext, VisionDetector, VisionResult
 
 log = logging.getLogger(__name__)
 
@@ -30,42 +30,64 @@ _PROMPT_TEMPLATE = """你是一个监控摄像头画面分析助手。
 class LLMVisionDetector(VisionDetector):
     """Vision detector that calls an LLM API (Anthropic / OpenAI) for scene understanding.
 
-    Config keys (under ``detectors.llm_vision``)::
+    Reads from two config sections merged together::
 
-        enabled: bool          — default false
-        provider: str          — "anthropic" (default) or "openai"
-        model: str             — model name
-        api_key: str           — API key (supports ${ENV_VAR})
-        base_url: str          — custom API endpoint (optional)
-        conf: float            — per-label confidence threshold (default 0.6)
-        cooldown_sec: float    — minimum interval between API calls (default 60)
-        frames: int            — number of keyframes to send (default 1, >1 improves accuracy)
-        system_prompt: str     — optional system prompt override
-        scenes: dict[str, str] — scene key → Chinese description
+        # ── 全局 LLM 连接配置 ──
+        llm:
+          provider: "anthropic"
+          model: "claude-sonnet-4-20250514"
+          api_key: "${ANTHROPIC_API_KEY}"
+          base_url: ""
+          cooldown_sec: 60
+          resize_width: 640
+
+        # ── detectors 下的场景定义（可 per-camera 覆盖）──
+        detectors:
+          llm_vision:
+            enabled: true
+            conf: 0.6
+            scenes:
+              feeding: "婴儿正在吃奶"
+
+    ``analyze_batch()`` sends all frames in a single API call (multi-image).
     """
 
     name = "llm_vision"
 
-    def __init__(self, cfg: dict[str, Any]) -> None:
-        self.enabled = bool(cfg.get("enabled", False))
-        self.provider = str(cfg.get("provider", "anthropic")).lower()
-        self.model = str(cfg.get("model", "claude-sonnet-4-20250514"))
-        self.api_key = str(cfg.get("api_key", ""))
-        self.base_url = str(cfg.get("base_url", "")).strip() or None
-        self.conf_threshold = float(cfg.get("conf", 0.6))
-        self.cooldown_sec = float(cfg.get("cooldown_sec", 60.0))
-        self.frames = int(cfg.get("frames", 1))
-        self.system_prompt = str(cfg.get("system_prompt", ""))
-        self.scenes: dict[str, str] = cfg.get("scenes", {}) or {}
+    def __init__(self, llm_cfg: dict, vision_cfg: dict) -> None:
+        self.enabled = bool(vision_cfg.get("enabled", False))
+        self.provider = str(llm_cfg.get("provider", "anthropic")).lower()
+        self.model = str(llm_cfg.get("model", "claude-sonnet-4-20250514"))
+        self.api_key = str(llm_cfg.get("api_key", ""))
+        self.base_url = str(llm_cfg.get("base_url", "")).strip() or None
+        self.conf_threshold = float(vision_cfg.get("conf", 0.6))
+        self.cooldown_sec = float(llm_cfg.get("cooldown_sec", 60.0))
+        self.resize_width = int(llm_cfg.get("resize_width", 640))
+        self.system_prompt = str(vision_cfg.get("system_prompt", ""))
+        self.scenes: dict[str, str] = vision_cfg.get("scenes", {}) or {}
         self._last_call = 0.0
         self._client = None
 
+    @classmethod
+    def from_config(cls, llm_cfg: dict | None, vision_cfg: dict | None) -> LLMVisionDetector | None:
+        """Factory: returns None when not enabled or misconfigured."""
+        vc = vision_cfg or {}
+        if not vc.get("enabled"):
+            return None
+        lc = llm_cfg or {}
+        if not lc.get("api_key"):
+            return None
+        return cls(lc, vc)
+
     # ── public API ──────────────────────────────────────────────
 
-    def analyze(
+    def analyze(self, frame_bgr: np.ndarray, ctx=None) -> VisionResult:
+        return self.analyze_batch([frame_bgr], ctx)
+
+    def analyze_batch(
         self,
-        frame_bgr: np.ndarray,
-        ctx=None,
+        frames: list[np.ndarray],
+        ctx: VisionContext | None = None,
     ) -> VisionResult:
         if not self.enabled or not self.scenes or not self.api_key:
             return VisionResult(labels={})
@@ -76,10 +98,6 @@ class LLMVisionDetector(VisionDetector):
                       now - self._last_call, self.cooldown_sec)
             return VisionResult(labels={})
         self._last_call = now
-
-        frames = [frame_bgr]
-        if self.frames > 1 and ctx and ctx.extra.get("llm_extra_frames"):
-            frames.extend(ctx.extra["llm_extra_frames"])
 
         try:
             b64_frames = [self._encode_frame(f) for f in frames]
@@ -101,6 +119,8 @@ class LLMVisionDetector(VisionDetector):
             return VisionResult(labels={})
 
         labels = self._parse_response(raw)
+        if not labels:
+            log.debug("[llm_vision] LLM 原始响应: %s", raw[:300])
         log.info("[llm_vision] 场景识别结果 (frames=%d): %s", len(frames), labels)
         return VisionResult(labels=labels)
 
@@ -109,9 +129,16 @@ class LLMVisionDetector(VisionDetector):
 
     # ── internals ───────────────────────────────────────────────
 
-    @staticmethod
-    def _encode_frame(frame_bgr: np.ndarray) -> str:
-        """BGR numpy array → base64 JPEG string."""
+    def _encode_frame(self, frame_bgr: np.ndarray) -> str:
+        """BGR numpy array → base64 JPEG string (optionally resized)."""
+        if self.resize_width > 0:
+            h, w = frame_bgr.shape[:2]
+            if w > self.resize_width:
+                scale = self.resize_width / w
+                new_w = self.resize_width
+                new_h = int(h * scale)
+                frame_bgr = cv2.resize(frame_bgr, (new_w, new_h),
+                                       interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         ok, buf = cv2.imencode(".jpg", rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         if not ok:
@@ -206,7 +233,7 @@ class LLMVisionDetector(VisionDetector):
                 score = 0.0
             score = max(0.0, min(1.0, score))
             if score >= self.conf_threshold:
-                labels[key] = round(score, 4)
+                labels[f"llm_{key}"] = round(score, 4)
         return labels
 
     def _get_client(self, cls: type):
