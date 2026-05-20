@@ -118,7 +118,7 @@ def sample_vision_burst(
         if fr is None:
             continue
         infer_fr = crop_to_region(fr, region)
-        r = pipeline.run(infer_fr, camera_id=camera_id, rtsp_url=None)
+        r = pipeline.run(infer_fr, camera_id=camera_id, rtsp_url=None, skip={"llm_vision"})
         samples.append((fr.copy(), r))
         next_t += cfg.interval_sec
 

@@ -88,7 +88,7 @@ def camera_worker(
     motion_cfg = _motion_cfg(eff)
     motion = MotionGate(motion_cfg)
     check_iv = motion_cfg.check_interval_sec
-    pipeline = AIPipeline.from_camera_detectors(eff.get("detectors"))
+    pipeline = AIPipeline.from_camera_detectors(eff.get("detectors"), full_cfg.get("llm"))
     rec_mgr = _recordings_mgr(eff, cam_id)
     ai_cd = _ai_cooldown_sec(eff)
     last_ai = 0.0
@@ -221,8 +221,9 @@ def main() -> None:
     parser.add_argument(
         "-v",
         "--verbose",
-        action="store_true",
-        help="DEBUG 日志（motion 触发、AI 冷却、detector 每帧/合并结果等）",
+        action="count",
+        default=0,
+        help="-v 应用自身 DEBUG；-vv 包含库（httpx/openai）DEBUG 日志",
     )
     parser.add_argument(
         "--http",
@@ -235,7 +236,11 @@ def main() -> None:
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s [%(threadName)s] %(name)s: %(message)s",
+        force=True,
     )
+    if args.verbose < 2:
+        for lib in ("httpx", "httpcore", "openai", "urllib3"):
+            logging.getLogger(lib).setLevel(logging.WARNING)
 
     cfg_path = Path(args.config)
     raw = load_config(cfg_path)

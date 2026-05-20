@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Development Rules
+
+- **No auto-commit/push**: Only commit and push when explicitly asked by the user.
+- **Version bump**: Before tagging a release, update `version` in `pyproject.toml` to match the tag. PyPI rejects duplicate version uploads.
+- **Config file**: `config.yaml` is private (contains credentials). Never commit it or expose its contents outside the session.
+- **Sensitive info**: Never hardcode API keys/tokens in code or example configs. Use `${ENV_VAR}` placeholders.
+
 ## Commands
 
 ```bash
@@ -56,12 +63,15 @@ RTSP stream ──> MotionGate (frame diff gating)
 | `config_loader.py` | YAML load with `deep_merge(defaults, camera)` and `${ENV_VAR}` expansion |
 | `stream.py` | `RTSPReader` — cv2.VideoCapture with auto-reconnect and TCP transport |
 | `motion.py` | `MotionGate` — resized → grayscale → gaussian blur → absdiff → threshold ratio |
-| `detectors/base.py` | Abstract `VisionDetector` / `AudioDetector` + `VisionResult` / `AudioResult` dataclasses |
-| `detectors/person_yolo.py` | `PersonYoloDetector` — YOLOv8 via ultralytics, outputs `person` label with confidence |
-| `detectors/pipeline.py` | `AIPipeline` — runs all registered detectors, manages `thresholds` for significance gating |
-| `hass.py` | `HassClient` — POSTs to Home Assistant REST API `/api/events/{event_type}` |
-| `snapshots.py` | `save_trigger_snapshot` — writes JPEG to `data/{camera_id}/{timestamp}.jpg` |
-| `vision_burst.py` | Multi-frame burst within `window_sec`, merges labels by max confidence, picks best frame for snapshot |
+| `region.py` | `crop_to_region` — normalized coordinate frame cropping |
+| `detectors/base.py` | Abstract `VisionDetector` / `AudioDetector` + result dataclasses |
+| `detectors/person_yolo.py` | `PersonYoloDetector` — YOLOv8 via ultralytics, outputs `person` label |
+| `detectors/llm_vision.py` | `LLMVisionDetector` — LLM API scene recognition |
+| `detectors/pipeline.py` | `AIPipeline` — runs all registered detectors, thresholds for significance |
+| `notifiers/` | `Notifier` base + `HassNotifier` (HA REST API) + `HooksNotifier` (subprocess scripts) |
+| `vision_burst.py` | Multi-frame burst, merges labels by max confidence, picks best frame |
+| `recordings.py` | Snapshot/clip recording with timeline.csv management |
+| `http_server.py` | Built-in HTTP server + Web UI for playback |
 
 ### Configuration
 

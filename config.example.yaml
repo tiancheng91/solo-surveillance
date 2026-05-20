@@ -1,6 +1,16 @@
 # 复制为 config.yaml 后按需修改（config.yaml 建议加入 .gitignore）
 
 # 可选：多路相机共用的默认值，单路里未写的项会回退到这里
+# ─── LLM 连接配置（全局，所有 LLM 功能共用）───
+# 连接信息放在这里，detectors 和 recordings 里只声明"检测什么"和"录什么"
+# llm:
+#   provider: "anthropic"                # "anthropic" 或 "openai"
+#   model: "claude-sonnet-4-20250514"
+#   api_key: "${ANTHROPIC_API_KEY}"       # 建议用环境变量
+#   base_url: ""                           # 自定义接入点（可选）
+#   cooldown_sec: 60                       # API 调用冷却（秒）
+#   resize_width: 640                      # 缩放长边（像素），降低 API 费用；0=不缩放
+
 defaults:
   motion:
     resize_width: 320
@@ -15,6 +25,7 @@ defaults:
     window_sec: 1.2
     interval_sec: 0.6
   # 场景化录制：按事件类型独立配置截图/视频片段；文件存 data/{cameraId}/{date}/ 下
+  # LLM 场景的事件类型为 llm_{scene_key}，例如 llm_feeding、llm_crying
   recordings:
     base_dir: "data"
     motion:                    # 运动触发（AI 检测前）
@@ -32,17 +43,11 @@ defaults:
       conf: 0.35
       classes: [0]
     # ── LLM 视觉场景识别（可选）──
-    # 调用 LLM API 分析画面内容，检测复杂场景（喂奶、哭闹、换尿布等）
+    # 这里只定义"检测什么场景"，连接配置从全局 llm 段读取
     # llm_vision:
     #   enabled: true
-    #   provider: "anthropic"               # "anthropic" 或 "openai"
-    #   model: "claude-sonnet-4-20250514"
-    #   api_key: "${ANTHROPIC_API_KEY}"      # 建议用环境变量
-    #   base_url: ""                          # 自定义接入点（可选，如 API 代理地址）
     #   conf: 0.6                            # 场景置信度阈值
-    #   cooldown_sec: 60                     # API 调用冷却（秒）
-    #   frames: 2                            # 传入帧数（>1 可提升准确率，帧间隔 >0.5s）
-    #   system_prompt: "你是一个婴儿房监控助手。请分析画面中的场景。"
+    #   frames: 1                            # 传入帧数（>1 可提升准确率）
     #   scenes:
     #     feeding: "婴儿正在吃奶（奶瓶或母乳喂养）"
     #     crying: "婴儿哭闹、表情痛苦"
